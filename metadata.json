@@ -1,0 +1,7 @@
+{
+  "name": "Monochrome Studio",
+  "description": "A professional, minimalist Digital Audio Workstation (DAW) in black and white, focused on vocal recording and mixing with beat importation.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
