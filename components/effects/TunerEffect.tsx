@@ -1,5 +1,4 @@
 import React, { useRef, useEffect, useState } from 'react';
-// Certifique-se de importar seus types e o engine corretamente
 import { EffectSettings } from '../../types'; 
 import { audioEngine } from '../../services/AudioEngine';
 
@@ -20,7 +19,6 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
-  // Estado local apenas para display (reduz renderizações desnecessárias do React)
   const [displayInfo, setDisplayInfo] = useState({
     note: '--',
     hz: 'Silence',
@@ -33,9 +31,6 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
     onChange({ ...settings, [key]: value });
   };
 
-  // --- LOOP DE DADOS (60 FPS) ---
-  // Busca dados do AudioEngine sem forçar re-render do componente inteiro,
-  // apenas atualiza o estado visual necessário e desenha no canvas.
   useEffect(() => {
     let animationFrameId: number;
 
@@ -44,13 +39,10 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext('2d');
 
-      // 1. Atualizar Estado Visual (apenas se mudou significativamente para economizar React Cycles)
-      // Nota: Em apps de alta performance, evitamos setState no loop, mas aqui é necessário para os textos.
       if (state && !state.isSilence) {
         const diff = state.targetPitch > 0 ? (state.targetPitch / state.currentPitch) - 1.0 : 0;
-        const isSynced = Math.abs(diff) < 0.02; // Threshold visual
+        const isSynced = Math.abs(diff) < 0.02;
 
-        // Atualiza textos na tela (pode ser otimizado com refs se ficar lento)
         setDisplayInfo({
           note: state.targetNoteName,
           hz: Math.round(state.currentPitch) + ' Hz',
@@ -62,9 +54,7 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
         setDisplayInfo({ note: '--', hz: 'Silence', correction: '', isSynced: false, diff: 0 });
       }
 
-      // 2. Desenhar no Canvas (Independente do React Render)
       if (canvas && ctx && containerRef.current) {
-        // Resize dinâmico se necessário
         if (canvas.width !== containerRef.current.offsetWidth || canvas.height !== containerRef.current.offsetHeight) {
           canvas.width = containerRef.current.offsetWidth;
           canvas.height = containerRef.current.offsetHeight;
@@ -74,42 +64,59 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
         const h = canvas.height;
         const centerY = h / 2;
 
-        // Limpar
         ctx.clearRect(0, 0, w, h);
 
-        // Grade de Fundo
-        ctx.strokeStyle = "#222";
+        // Gradient Background
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, '#0a0a0a');
+        grad.addColorStop(1, '#000');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0,0,w,h);
+
+        // Grid
+        ctx.strokeStyle = "#1a1a1a";
         ctx.lineWidth = 1;
+        ctx.beginPath();
+        for(let i=0; i<w; i+=40) { ctx.moveTo(i, 0); ctx.lineTo(i, h); }
+        for(let i=0; i<h; i+=40) { ctx.moveTo(0, i); ctx.lineTo(w, i); }
+        ctx.stroke();
+
+        // Center Line
         ctx.beginPath();
         ctx.moveTo(0, centerY);
         ctx.lineTo(w, centerY);
-        ctx.strokeStyle = "#444"; // Linha Central
+        ctx.strokeStyle = "#444"; 
+        ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Indicador de Pitch (Bola e Linha Magnética)
         if (state && !state.isSilence) {
-            // Fator de suavização visual
             const diff = state.targetPitch > 0 ? (state.targetPitch / state.currentPitch) - 1.0 : 0;
-            
-            // Amplifica a diferença para visualização (igual ao HTML original)
             const y = centerY - (diff * 300); 
 
-            // Linha Magnética
+            // Connection Line
             ctx.beginPath();
             ctx.moveTo(w/2, y);
             ctx.lineTo(w/2, centerY);
-            ctx.strokeStyle = "rgba(230, 194, 0, 0.3)";
+            ctx.strokeStyle = "rgba(230, 194, 0, 0.5)";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([4, 4]);
             ctx.stroke();
+            ctx.setLineDash([]);
 
-            // Bola
+            // Ball
             ctx.beginPath();
-            ctx.arc(w/2, y, 10, 0, Math.PI * 2);
-            // Verde se afinado, Dourado se corrigindo
+            ctx.arc(w/2, y, 12, 0, Math.PI * 2);
             ctx.fillStyle = Math.abs(diff) < 0.02 ? "#00ff00" : "#e6c200";
-            ctx.shadowBlur = Math.abs(diff) < 0.02 ? 15 : 5;
+            ctx.shadowBlur = 20;
             ctx.shadowColor = ctx.fillStyle;
             ctx.fill();
             ctx.shadowBlur = 0;
+            
+            // Inner Core
+            ctx.beginPath();
+            ctx.arc(w/2, y, 4, 0, Math.PI * 2);
+            ctx.fillStyle = "#fff";
+            ctx.fill();
         }
       }
 
@@ -120,47 +127,55 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
     return () => cancelAnimationFrame(animationFrameId);
   }, [trackId]);
 
-  // --- ESTILOS CUSTOMIZADOS (Sliders) ---
   const customStyles = `
     .desert-slider {
       -webkit-appearance: none;
       width: 100%;
-      height: 4px;
-      background: #333;
-      border-radius: 2px;
+      height: 6px;
+      background: #222;
+      border-radius: 3px;
       outline: none;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
     }
     .desert-slider::-webkit-slider-thumb {
       -webkit-appearance: none;
-      appearance: none;
-      width: 18px;
-      height: 18px;
+      width: 20px;
+      height: 20px;
       border-radius: 50%;
-      background: #e6c200;
+      background: linear-gradient(180deg, #e6c200, #b39700);
       cursor: pointer;
       border: 2px solid #000;
-      box-shadow: 0 0 8px rgba(230, 194, 0, 0.4);
+      box-shadow: 0 0 10px rgba(230, 194, 0, 0.4);
     }
     .desert-select {
-        background-color: #000;
+        background-color: #0a0a0a;
         color: #e6c200;
-        border: 1px solid #444;
-        padding: 4px 8px;
-        font-family: 'Courier New', monospace;
+        border: 1px solid #333;
+        padding: 6px 10px;
+        font-family: 'Inter', sans-serif;
         font-size: 12px;
+        font-weight: 600;
         outline: none;
+        border-radius: 4px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    .desert-select:focus {
+        border-color: #e6c200;
     }
   `;
 
   return (
-    <div className="flex flex-col w-full h-full bg-black text-[#f0f0f0] font-mono select-none overflow-hidden border border-[#333]">
+    <div className="flex flex-col w-full h-full bg-[#050505] text-[#f0f0f0] font-sans select-none overflow-hidden border border-[#222]">
       <style>{customStyles}</style>
 
       {/* --- HEADER --- */}
-      <div className="flex justify-between items-center px-4 py-2 bg-[#050505] border-b border-[#333] shrink-0">
-         <h1 className="text-[#e6c200] text-sm tracking-widest font-bold uppercase">Auto-Pitch Pro</h1>
-         <div className={`text-[10px] px-2 py-1 rounded border ${displayInfo.hz !== 'Silence' ? 'bg-[#e6c200] text-black border-[#e6c200] font-bold' : 'bg-[#222] text-[#666] border-[#444]'}`}>
-            {displayInfo.hz !== 'Silence' ? 'ACTIVE' : 'IDLE'}
+      <div className="flex justify-between items-center px-6 py-3 bg-[#0a0a0a] border-b border-[#222] shrink-0 shadow-lg">
+         <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${displayInfo.hz !== 'Silence' ? 'bg-[#e6c200] animate-pulse' : 'bg-[#333]'}`}></div>
+            <h1 className="text-white text-sm tracking-widest font-black uppercase">Auto-Pitch <span className="text-[#e6c200]">PRO</span></h1>
+         </div>
+         <div className={`text-[10px] px-3 py-1 rounded-full border font-bold tracking-wider ${displayInfo.hz !== 'Silence' ? 'bg-[#e6c200]/10 text-[#e6c200] border-[#e6c200]/30' : 'bg-[#1a1a1a] text-[#555] border-[#333]'}`}>
+            {displayInfo.hz !== 'Silence' ? 'SIGNAL DETECTED' : 'NO SIGNAL'}
          </div>
       </div>
 
@@ -169,38 +184,38 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
         <canvas ref={canvasRef} className="absolute inset-0 z-0" />
         
         {/* Info Overlay */}
-        <div className="z-10 text-6xl font-bold text-[#e6c200] drop-shadow-[0_0_20px_rgba(230,194,0,0.5)]">
+        <div className="z-10 text-7xl font-black text-[#e6c200] drop-shadow-[0_0_30px_rgba(230,194,0,0.4)] tracking-tighter">
             {displayInfo.note}
         </div>
-        <div className="z-10 text-sm text-[#666] font-mono mt-2">
+        <div className="z-10 text-sm text-[#555] font-mono mt-2 bg-black/50 px-3 py-1 rounded backdrop-blur-sm border border-[#222]">
             {displayInfo.hz}
         </div>
-        <div className={`z-10 text-xs font-bold uppercase mt-1 tracking-wider ${displayInfo.isSynced ? 'text-[#00ff00]' : 'text-[#ff3333]'}`}>
+        <div className={`z-10 text-xs font-bold uppercase mt-4 tracking-[0.2em] px-4 py-1 rounded-full ${displayInfo.isSynced ? 'bg-green-900/20 text-[#00ff00] border border-green-900/50' : 'text-[#ff3333]'}`}>
             {displayInfo.correction}
         </div>
       </div>
 
       {/* --- CONTROLS PANEL --- */}
-      <div className="bg-[#111] p-4 border-t-2 border-[#e6c200] shrink-0 grid grid-cols-2 gap-x-6 gap-y-4">
+      <div className="bg-[#0a0a0a] p-6 border-t border-[#333] shrink-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-20">
         
-        {/* Col 1: Scale */}
-        <div className="flex flex-col gap-1">
-            <label className="text-[10px] text-[#888] font-bold uppercase">Tonalidade (Key)</label>
+        {/* Scale */}
+        <div className="flex flex-col gap-2">
+            <label className="text-[10px] text-[#666] font-bold uppercase tracking-widest">Key Scale</label>
             <select 
                 value={settings.scale} 
                 onChange={(e) => updateParam('scale', e.target.value)}
-                className="desert-select w-full h-[30px]"
+                className="desert-select w-full"
             >
                 {SCALES_LIST.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
         </div>
 
-        {/* Col 2: Speed */}
-        <div className="flex flex-col gap-1">
+        {/* Speed */}
+        <div className="flex flex-col gap-2">
             <div className="flex justify-between items-end">
-                <label className="text-[10px] text-[#888] font-bold uppercase">Speed</label>
-                <span className="text-[11px] text-[#e6c200] font-bold">
-                    {settings.speed < 0.1 ? "Trap (Fast)" : "Natural (Slow)"}
+                <label className="text-[10px] text-[#666] font-bold uppercase tracking-widest">Retune Speed</label>
+                <span className="text-[10px] text-[#e6c200] font-bold bg-[#e6c200]/10 px-2 py-0.5 rounded">
+                    {settings.speed < 0.1 ? "FAST" : "NATURAL"}
                 </span>
             </div>
             <input 
@@ -212,11 +227,11 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
             />
         </div>
 
-        {/* Col 1: Reverb (NOVO) */}
-        <div className="flex flex-col gap-1">
+        {/* Reverb */}
+        <div className="flex flex-col gap-2">
             <div className="flex justify-between items-end">
-                <label className="text-[10px] text-[#888] font-bold uppercase">Reverb</label>
-                <span className="text-[11px] text-[#e6c200] font-bold">{settings.reverb || 0}%</span>
+                <label className="text-[10px] text-[#666] font-bold uppercase tracking-widest">Atmosphere</label>
+                <span className="text-[10px] text-[#e6c200] font-bold bg-[#e6c200]/10 px-2 py-0.5 rounded">{settings.reverb || 0}%</span>
             </div>
             <input 
                 type="range" 
@@ -227,31 +242,27 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
             />
         </div>
 
-        {/* Col 2: Harmony & Bypass */}
-        <div className="flex flex-col justify-between h-full pt-1">
-            {/* Harmony Toggle */}
+        {/* Actions */}
+        <div className="flex flex-col justify-between h-full gap-2">
             <div 
-                className="flex items-center gap-2 cursor-pointer group"
+                className={`flex items-center gap-3 cursor-pointer p-2 rounded border transition-all ${settings.harmony ? 'bg-[#e6c200]/10 border-[#e6c200]/50' : 'bg-[#111] border-[#333] hover:border-[#555]'}`}
                 onClick={() => updateParam('harmony', !settings.harmony)}
             >
-                <div className={`w-4 h-4 border border-[#444] flex items-center justify-center transition-colors ${settings.harmony ? 'bg-[#e6c200] border-[#e6c200]' : 'bg-black group-hover:border-[#666]'}`}>
-                    {settings.harmony && <div className="w-2 h-2 bg-black" />}
-                </div>
-                <span className={`text-[11px] uppercase font-bold ${settings.harmony ? 'text-[#e6c200]' : 'text-[#888]'}`}>
-                    Harmonia (3 Vozes)
+                <div className={`w-3 h-3 rounded-sm ${settings.harmony ? 'bg-[#e6c200] shadow-[0_0_10px_rgba(230,194,0,0.5)]' : 'bg-[#333]'}`}></div>
+                <span className={`text-[10px] uppercase font-bold tracking-wider ${settings.harmony ? 'text-[#e6c200]' : 'text-[#888]'}`}>
+                    Harmony Mode
                 </span>
             </div>
 
-            {/* Bypass Button */}
             <button 
                 onClick={() => updateParam('active', !settings.active)} 
-                className={`mt-2 w-full border py-1 text-[11px] uppercase font-bold tracking-widest transition-all
+                className={`w-full py-2 text-[10px] uppercase font-black tracking-[0.2em] transition-all rounded shadow-lg
                 ${settings.active 
-                    ? 'bg-[#e6c200] text-black border-[#e6c200] hover:bg-[#ffe033]' 
-                    : 'bg-transparent text-[#666] border-[#444] hover:border-[#666] hover:text-[#888]'
+                    ? 'bg-gradient-to-r from-[#e6c200] to-[#b39700] text-black hover:brightness-110 shadow-orange-500/20' 
+                    : 'bg-[#1a1a1a] text-[#555] border border-[#333] hover:border-[#555] hover:text-[#888]'
                 }`}
             >
-                {settings.active ? "EFEITO LIGADO" : "BYPASS"}
+                {settings.active ? "ENGAGED" : "BYPASS"}
             </button>
         </div>
 

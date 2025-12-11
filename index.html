@@ -5,32 +5,73 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monochrome Studio</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            },
+            colors: {
+              desert: {
+                50: '#fffaeb',
+                100: '#fff3c7',
+                200: '#ffe58a',
+                300: '#ffd24d',
+                400: '#ffc11f',
+                500: '#e6c200', /* Primary Gold */
+                600: '#cc9a00',
+                700: '#a37200',
+                800: '#85580a',
+                900: '#71480f',
+                950: '#422602',
+              }
+            }
+          }
+        }
+      }
+    </script>
     <style>
-      /* Custom Scrollbar for a sleek look */
+      /* Custom Scrollbar */
       ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
+        width: 6px;
+        height: 6px;
       }
       ::-webkit-scrollbar-track {
         background: #09090b; 
       }
       ::-webkit-scrollbar-thumb {
-        background: #27272a; 
-        border-radius: 4px;
+        background: #333; 
+        border-radius: 3px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #3f3f46; 
+        background: #e6c200; 
       }
       body {
-        background-color: #000;
-        color: #fff;
+        background-color: #050505;
+        color: #e4e4e7;
+        /* Desabilita seleção de texto globalmente */
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
       }
       .animate-fade-in {
-        animation: fadeIn 1s ease-out forwards;
+        animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       }
       @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
+        from { opacity: 0; transform: scale(0.98); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      /* Range Inputs Reset */
+      input[type=range] {
+        -webkit-appearance: none; 
+        background: transparent; 
+      }
+      input[type=range]:focus {
+        outline: none;
       }
     </style>
   <script type="importmap">
@@ -41,7 +82,9 @@
     "react/": "https://esm.sh/react@^19.2.1/",
     "lucide-react": "https://esm.sh/lucide-react@^0.559.0",
     "jszip": "https://esm.sh/jszip@3.10.1",
-    "file-saver": "https://esm.sh/file-saver@2.0.5"
+    "file-saver": "https://esm.sh/file-saver@2.0.5",
+    "vite": "https://esm.sh/vite@^7.2.7",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
   }
 }
 </script>

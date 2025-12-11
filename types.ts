@@ -1,3 +1,5 @@
+import React from 'react';
+
 export enum TrackType {
   BEAT = 'BEAT',
   VOCAL = 'VOCAL',
@@ -10,44 +12,14 @@ export interface FilterBand {
   type: 'peaking' | 'lowshelf' | 'highshelf' | 'lowpass' | 'highpass' | 'notch';
 }
 
-export interface EffectSettings {
-  // Desert Suite (Primary)
-  autoPitch: {
-    scale: string; // e.g., "C Major"
-    speed: number; // 0 (Fast/Trap) to 0.5 (Slow/Natural)
-    active: boolean;
-    harmony: boolean; // Triples the voice
-    reverb: number;
-  };
-  parametricEQ: { 
-    bands: FilterBand[]; 
-    active: boolean;
-    preamp: number;
-    reverb: number; 
-  };
-  compressor: { 
-    threshold: number; 
-    ratio: number; 
-    attack: number; 
-    release: number; 
-    knee: number; 
-    makeup: number; 
-    active: boolean 
-  };
-  reverb: {
-    time: number;
-    mix: number;
-    preDelay: number;
-    tone: number;
-    size: number;
-    active: boolean;
-  };
-
-  // Essentials
-  distortion: number; 
+// Interface antiga para compatibilidade
+export interface LegacyEffectSettings {
+  autoPitch: { scale: string; speed: number; active: boolean; harmony: boolean; reverb: number; };
+  parametricEQ: { bands: FilterBand[]; active: boolean; preamp: number; reverb: number; };
+  compressor: { threshold: number; ratio: number; attack: number; release: number; knee: number; makeup: number; active: boolean };
+  reverb: { time: number; mix: number; preDelay: number; tone: number; size: number; active: boolean };
+  distortion: number;
   delay: { time: number; feedback: number; mix: number; active: boolean };
-  
-  // Legacy/Unused
   eqLow: { gain: number; active: boolean };
   eqMid: { gain: number; active: boolean };
   eqHigh: { gain: number; active: boolean };
@@ -57,6 +29,9 @@ export interface EffectSettings {
   limiter: { threshold: number; active: boolean };
   phaser: { rate: number; depth: number; active: boolean };
 }
+
+// EffectSettings agora aceita chaves dinâmicas para os novos plugins
+export type EffectSettings = LegacyEffectSettings & { [key: string]: any };
 
 export interface Clip {
   id: string;
@@ -95,4 +70,23 @@ export interface AudioEngineState {
     start: number;
     end: number;
   };
+}
+
+// --- NOVO SISTEMA DE PLUGINS ---
+
+export interface EffectPlugin<T = any> {
+  id: string;
+  name: string;
+  defaultSettings: T;
+  
+  // Audio Logic
+  initialize: (context: AudioContext, initialSettings: T) => AudioNode; // Retorna o nó de entrada (que deve estar conectado internamente até a saída do nó retornado)
+  update: (node: AudioNode, settings: T, context: AudioContext) => void;
+  
+  // UI Component
+  component: React.FC<{ 
+    trackId: string;
+    settings: T;
+    onChange: (newSettings: T) => void;
+  }>;
 }

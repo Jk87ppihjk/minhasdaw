@@ -1,4 +1,5 @@
 import { Track, Clip, EffectSettings } from '../types';
+import { EffectRegistry } from './EffectRegistry';
 
 // Scale Definitions
 const NOTE_STRINGS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -30,10 +31,9 @@ interface TrackChain {
   analyser: AnalyserNode;
   panner: StereoPannerNode;
   gain: GainNode;
-  effectNodes: Record<string, AudioNode>;
+  effectNodes: Record<string, AudioNode>; // Armazena nós dos efeitos (Plugins e Legacy)
   parametricEQNodes: BiquadFilterNode[];
   lastReverbParams?: { time: number; size: number };
-  // Tuner Specific
   tunerProcessor?: ScriptProcessorNode;
   tunerState?: TunerState;
 }
@@ -66,7 +66,7 @@ class AudioEngineService {
     this.masterGain.gain.setTargetAtTime(value, this.context.currentTime, 0.01);
   }
 
-  // --- Tuner Logic Helpers ---
+  // --- Tuner Logic Helpers (LEGACY) ---
   private autoCorrelate(buf: Float32Array, sampleRate: number): number {
       let SIZE = buf.length;
       let rms = 0;
@@ -178,7 +178,7 @@ class AudioEngineService {
         chain.effectNodes[id] = node;
     };
 
-    // Static EQs
+    // Static EQs (Legacy)
     if (track.effects.eqLow.active) {
         const n = this.context.createBiquadFilter(); n.type = 'lowshelf'; n.frequency.value = 100; n.gain.value = track.effects.eqLow.gain; chainNode(n, 'eqLow');
     }
@@ -189,29 +189,34 @@ class AudioEngineService {
         const n = this.context.createBiquadFilter(); n.type = 'highshelf'; n.frequency.value = 5000; n.gain.value = track.effects.eqHigh.gain; chainNode(n, 'eqHigh');
     }
 
-    // Dynamic Effects
+    // Dynamic Effects Processing
     track.activeEffects.forEach((effectId, index) => {
         const uniqueId = `${effectId}_${index}`; 
 
+        // 1. CHECK FOR NEW PLUGIN SYSTEM FIRST
+        const plugin = EffectRegistry.get(effectId);
+        if (plugin) {
+            const settings = track.effects[effectId] || plugin.defaultSettings;
+            const node = plugin.initialize(this.context, settings);
+            chainNode(node, uniqueId);
+            return; // Continue to next effect
+        }
+
+        // 2. FALLBACK TO LEGACY HARDCODED EFFECTS
         if (effectId === 'autoPitch' && track.effects.autoPitch.active) {
-            // Tuner Desert Implementation
+            // Tuner Desert Implementation (Simplified Logic)
             const bufferSize = 4096;
             const processor = this.context.createScriptProcessor(bufferSize, 1, 1);
             const delayBuffer = new Float32Array(bufferSize * 2);
             let writePos = 0;
             let phaseMain = 0;
-            let phaseHigh = 0; 
-            let phaseLow = 0;
             let currentPitchFactor = 1.0;
             let targetPitchFactor = 1.0;
-
             const settings = track.effects.autoPitch;
 
             processor.onaudioprocess = (e) => {
                 const input = e.inputBuffer.getChannelData(0);
                 const output = e.outputBuffer.getChannelData(0);
-                
-                // 1. Pitch Detection (Once per buffer for stability)
                 const pitch = this.autoCorrelate(input, this.context.sampleRate);
                 
                 if (pitch !== -1) {
@@ -222,16 +227,9 @@ class AudioEngineService {
                     const correctedNoteName = NOTE_STRINGS[correctedMidi % 12];
                     
                     let ratio = targetFreq / pitch;
-                    // Limit extreme shifts to avoid artifacts
                     if (ratio > 2.0) ratio = 2.0; if (ratio < 0.5) ratio = 0.5;
-                    
-                    if (Math.abs(1.0 - ratio) > 0.02) {
-                        targetPitchFactor = ratio;
-                    } else {
-                        targetPitchFactor = 1.0;
-                    }
+                    if (Math.abs(1.0 - ratio) > 0.02) targetPitchFactor = ratio; else targetPitchFactor = 1.0;
 
-                    // Update State for Visuals
                     if (chain.tunerState) {
                         chain.tunerState.currentPitch = pitch;
                         chain.tunerState.targetPitch = targetFreq;
@@ -244,7 +242,6 @@ class AudioEngineService {
                     if (chain.tunerState) chain.tunerState.isSilence = true;
                 }
 
-                // 2. Granular Pitch Shifting
                 const smoothing = Math.max(0.0001, settings.speed * 0.1); 
                 const grainLen = 1024;
 
@@ -252,45 +249,22 @@ class AudioEngineService {
                     delayBuffer[writePos] = input[i];
                     currentPitchFactor += (targetPitchFactor - currentPitchFactor) * smoothing;
                     
-                    const speedMain = currentPitchFactor;
-                    
-                    // Main Voice
                     let phA = phaseMain % grainLen; if (phA < 0) phA += grainLen;
                     let phB = (phaseMain + grainLen/2) % grainLen; if (phB < 0) phB += grainLen;
-                    let readPosA = writePos - phA;
-                    let readPosB = writePos - phB;
+                    let readPosA = writePos - phA; while (readPosA < 0) readPosA += delayBuffer.length;
+                    let readPosB = writePos - phB; while (readPosB < 0) readPosB += delayBuffer.length;
                     
-                    // Wrap read pointers
-                    while (readPosA < 0) readPosA += delayBuffer.length;
-                    while (readPosA >= delayBuffer.length) readPosA -= delayBuffer.length;
-                    while (readPosB < 0) readPosB += delayBuffer.length;
-                    while (readPosB >= delayBuffer.length) readPosB -= delayBuffer.length;
-
-                    let valA = delayBuffer[Math.floor(readPosA)];
-                    let valB = delayBuffer[Math.floor(readPosB)];
+                    let valA = delayBuffer[Math.floor(readPosA) % delayBuffer.length];
+                    let valB = delayBuffer[Math.floor(readPosB) % delayBuffer.length];
                     
                     let gainA = 1.0 - Math.abs((phA - grainLen/2) / (grainLen/2));
                     let gainB = 1.0 - Math.abs((phB - grainLen/2) / (grainLen/2));
                     
-                    let finalSample = (valA * gainA) + (valB * gainB);
-
-                    // Harmony Voices (Simpler implementation reusing buffer)
-                    if (settings.harmony) {
-                         const speedHigh = currentPitchFactor * 2.0; // Octave Up roughly
-                         const speedLow = currentPitchFactor * 0.5;  // Octave Down roughly
-                         // Need separate phase trackers/granulators for quality, simplified here:
-                         // (Omitting full implementation for brevity, just keeping main structure valid)
-                         // Ideally, you repeat the grain logic for phaseHigh/phaseLow
-                    }
-
-                    output[i] = finalSample;
-
-                    phaseMain += (1.0 - speedMain);
-                    writePos++;
-                    if (writePos >= delayBuffer.length) writePos = 0;
+                    output[i] = (valA * gainA) + (valB * gainB);
+                    phaseMain += (1.0 - currentPitchFactor);
+                    writePos++; if (writePos >= delayBuffer.length) writePos = 0;
                 }
             };
-
             chainNode(processor, uniqueId);
             chain.tunerProcessor = processor;
         }
@@ -397,6 +371,18 @@ class AudioEngineService {
     // Check Active/Inactive states of complex effects
     track.activeEffects.forEach((effectId, index) => {
         const uniqueId = `${effectId}_${index}`;
+        
+        // PLUGIN SYSTEM CHECK
+        const plugin = EffectRegistry.get(effectId);
+        if (plugin) {
+             const hasNodes = !!chain.effectNodes[uniqueId];
+             // In current simplified plugin system, active state might be handled inside update, 
+             // but if we were destroying nodes based on active state, we'd check here.
+             // For now, let's assume plugins handle bypass internally via update().
+             return;
+        }
+
+        // LEGACY CHECKS
         if (effectId === 'compressor') {
             const hasNodes = !!chain.effectNodes[`${uniqueId}_comp`];
             if (track.effects.compressor.active !== hasNodes) needsRebuild = true;
@@ -404,7 +390,7 @@ class AudioEngineService {
             const hasNodes = !!chain.effectNodes[`${uniqueId}_conv`];
             if (track.effects.reverb.active !== hasNodes) needsRebuild = true;
         } else if (effectId === 'autoPitch') {
-            const hasNodes = !!chain.tunerProcessor; // Tuner uses a specific slot
+            const hasNodes = !!chain.tunerProcessor; 
             if (track.effects.autoPitch.active !== hasNodes) needsRebuild = true;
         }
     });
@@ -431,6 +417,17 @@ class AudioEngineService {
         const uniqueId = `${effectId}_${index}`;
         const now = this.context.currentTime;
 
+        // 1. PLUGIN UPDATE (FIX: Fallback to defaults if setting is missing)
+        const plugin = EffectRegistry.get(effectId);
+        if (plugin) {
+             const node = chain.effectNodes[uniqueId];
+             if (node) {
+                 plugin.update(node, track.effects[effectId] || plugin.defaultSettings, this.context);
+             }
+             return;
+        }
+
+        // 2. LEGACY UPDATE
         if (effectId === 'compressor') {
             const comp = chain.effectNodes[`${uniqueId}_comp`] as DynamicsCompressorNode;
             const makeup = chain.effectNodes[`${uniqueId}_makeup`] as GainNode;
@@ -469,15 +466,6 @@ class AudioEngineService {
              const distNode = chain.effectNodes[uniqueId] as WaveShaperNode;
              if (distNode) distNode.curve = this.makeDistortionCurve(track.effects.distortion);
         }
-        // AutoPitch parameters are read directly in the ScriptProcessor loop from the passed track object reference or via closure,
-        // but since we passed primitive values in logic above, we might need a way to push updates to the processor scope.
-        // However, ScriptProcessor logic inside `rebuildTrackEffects` captures `settings` object.
-        // As long as `track.effects.autoPitch` is the SAME object reference, it updates.
-        // In Redux/React state is immutable, so the object ref changes.
-        // We need to handle this. For now, Rebuild is the safest for AutoPitch changes or we'd need a message port.
-        // Given complexity, we will rely on Rebuild for major property changes if performance is an issue, 
-        // but strictly speaking, `rebuildTrackEffects` creates the closure over `settings`. 
-        // We can optimize by attaching `settings` to the node.
     });
 
     if (chain.effectNodes['eqLow']) (chain.effectNodes['eqLow'] as BiquadFilterNode).gain.setTargetAtTime(track.effects.eqLow.gain, this.context.currentTime, 0.1);
