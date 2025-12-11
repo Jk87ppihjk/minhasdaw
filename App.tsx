@@ -7,6 +7,7 @@ import { Track, TrackType, AudioEngineState, Clip, EffectSettings } from './type
 import { EffectRegistry } from './services/EffectRegistry'; // Import Registry
 import { Waveform } from './components/Waveform';
 import { Knob } from './components/Knob';
+import { EffectSelector } from './components/EffectSelector'; // Importar o novo seletor
 import { ParametricEQ } from './components/effects/ParametricEQ';
 import { CompressorEffect } from './components/effects/CompressorEffect';
 import { ReverbEffect } from './components/effects/ReverbEffect';
@@ -43,6 +44,13 @@ export default function App() {
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeTool, setActiveTool] = useState<'cursor' | 'split'>('cursor');
+  
+  // New State for Effect Selector
+  const [showEffectSelector, setShowEffectSelector] = useState(false);
+  const [effectSelectorTrackId, setEffectSelectorTrackId] = useState<string | null>(null);
+  
+  // Scroll Sync State
+  const [scrollTop, setScrollTop] = useState(0);
   
   const [audioState, setAudioState] = useState<AudioEngineState>({
     isPlaying: false,
@@ -423,6 +431,7 @@ export default function App() {
          return t;
      }));
      setOpenedEffect({ trackId, effectId: effectName });
+     setShowEffectSelector(false); // Close modal
   };
 
   // --- UI Interactions ---
@@ -529,6 +538,14 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen w-full bg-[#050505] text-zinc-200 font-sans selection:bg-desert-500 selection:text-black overflow-hidden relative">
       
+      {/* Modals */}
+      {showEffectSelector && effectSelectorTrackId && (
+          <EffectSelector 
+              onSelect={(effectId) => addEffect(effectSelectorTrackId, effectId)}
+              onClose={() => { setShowEffectSelector(false); setEffectSelectorTrackId(null); }}
+          />
+      )}
+
       {/* Welcome Screen */}
       {welcomeScreen && (
           <div className="fixed inset-0 z-[100] bg-[#050505] flex flex-col items-center justify-center animate-fade-in text-center bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900 to-black">
@@ -658,9 +675,9 @@ export default function App() {
              <div className="flex flex-1 relative overflow-hidden">
                 {/* Track List (Left) */}
                 <div className="w-48 bg-[#0a0a0a] border-r border-zinc-800 overflow-hidden shadow-2xl z-20 flex flex-col">
-                    <div className="flex-1 space-y-[1px]" style={{ transform: `translateY(-${scrollContainerRef.current?.scrollTop || 0}px)` }}>
+                    <div className="flex-1 space-y-[1px]" style={{ transform: `translateY(-${scrollTop}px)` }}>
                         {tracks.map(track => (
-                            <div key={track.id} onClick={() => setSelectedTrackId(track.id)} className={`h-28 px-3 py-3 flex flex-col justify-between border-b border-zinc-900 cursor-pointer group transition-colors relative ${selectedTrackId === track.id ? 'bg-[#151515] border-l-4 border-l-desert-500' : 'bg-[#0a0a0a] hover:bg-[#111] border-l-4 border-l-transparent'}`}>
+                            <div key={track.id} onClick={() => setSelectedTrackId(track.id)} className={`h-28 flex-shrink-0 px-3 py-3 flex flex-col justify-between border-b border-zinc-900 cursor-pointer group transition-colors relative ${selectedTrackId === track.id ? 'bg-[#151515] border-l-4 border-l-desert-500' : 'bg-[#0a0a0a] hover:bg-[#111] border-l-4 border-l-transparent'}`}>
                                 <div className="flex items-center justify-between">
                                     <div className="flex flex-col overflow-hidden">
                                         <span className={`font-bold text-sm truncate w-24 ${selectedTrackId === track.id ? 'text-white' : 'text-zinc-400'}`} onDoubleClick={() => editTrackName(track.id)}>{track.name}</span>
@@ -684,7 +701,7 @@ export default function App() {
                 </div>
 
                 {/* Timeline Grid (Right) */}
-                <div className="flex-1 overflow-auto bg-[#080808] relative custom-scrollbar" ref={scrollContainerRef}>
+                <div className="flex-1 overflow-auto bg-[#080808] relative custom-scrollbar" ref={scrollContainerRef} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
                     <div className="relative" style={{ minWidth: `${audioState.totalDuration * pixelsPerSecond}px`, minHeight: '100%' }}>
                         <div className="absolute inset-0 z-0 opacity-40">{GridLines}</div>
                         {/* Playhead Ruler */}
@@ -732,7 +749,7 @@ export default function App() {
                         {/* Tracks Lane */}
                         <div className="space-y-[1px] relative z-10">
                             {tracks.map(track => (
-                                <div key={track.id} className={`h-28 relative border-b border-zinc-800/30 group ${track.muted ? 'opacity-40 grayscale' : ''}`}>
+                                <div key={track.id} className={`h-28 flex-shrink-0 relative border-b border-zinc-800/30 group ${track.muted ? 'opacity-40 grayscale' : ''}`}>
                                     {track.clips.map(clip => (
                                         <div key={clip.id} onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id)} className={`absolute top-2 bottom-2 rounded-md overflow-hidden cursor-move border transition-all shadow-md ${selectedClipId === clip.id ? 'border-zinc-200 bg-zinc-800 z-30 shadow-xl' : 'border-zinc-700 bg-zinc-900 z-10 hover:border-zinc-500'}`} style={{ left: `${clip.startTime * pixelsPerSecond}px`, width: `${clip.duration * pixelsPerSecond}px` }}>
                                             <div className="w-full h-full opacity-80 pointer-events-none p-1"><Waveform buffer={clip.buffer} color={selectedClipId === clip.id ? "bg-white" : "bg-zinc-400"} start={clip.audioOffset} duration={clip.duration} /></div>
@@ -783,31 +800,12 @@ export default function App() {
                         <div className="space-y-3 pt-2">
                             <div className="flex items-center justify-between mb-2">
                                 <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-1"><Disc className="w-3 h-3" /> INSERTS CHAIN</h3>
-                                <div className="relative group">
-                                    <button className="text-[10px] bg-desert-500 text-black font-bold px-3 py-1 rounded-full flex gap-1 items-center hover:bg-white transition-colors shadow-lg shadow-desert-500/20"><Plus className="w-3 h-3" /> FX</button>
-                                    <div className="absolute right-0 top-full mt-2 w-48 bg-[#111] border border-zinc-700 rounded-lg shadow-2xl hidden group-hover:block z-50 overflow-hidden">
-                                        <div className="px-3 py-2 text-[10px] font-bold text-zinc-500 uppercase bg-zinc-950 border-b border-zinc-800">Add Effect</div>
-                                        
-                                        {/* DYNAMIC PLUGINS MENU */}
-                                        {EffectRegistry.getAll().map(plugin => (
-                                            <button 
-                                                key={plugin.id}
-                                                onClick={() => addEffect(selectedTrack.id, plugin.id)} 
-                                                className="w-full text-left px-4 py-3 text-xs hover:bg-zinc-800 text-desert-500 font-bold block border-b border-zinc-800"
-                                            >
-                                                ★ {plugin.name}
-                                            </button>
-                                        ))}
-
-                                        {/* LEGACY MENU */}
-                                        <button onClick={() => addEffect(selectedTrack.id, 'autoPitch')} className="w-full text-left px-4 py-3 text-xs hover:bg-zinc-800 text-desert-500 font-bold block border-b border-zinc-800">★ Tuner Desert (Legacy)</button>
-                                        <button onClick={() => addEffect(selectedTrack.id, 'parametricEQ')} className="w-full text-left px-4 py-2 text-xs hover:bg-zinc-800 text-zinc-300 block">Parametric EQ</button>
-                                        <button onClick={() => addEffect(selectedTrack.id, 'compressor')} className="w-full text-left px-4 py-2 text-xs hover:bg-zinc-800 text-zinc-300 block">Compressor</button>
-                                        <button onClick={() => addEffect(selectedTrack.id, 'reverb')} className="w-full text-left px-4 py-2 text-xs hover:bg-zinc-800 text-zinc-300 block">Reverb</button>
-                                        <button onClick={() => addEffect(selectedTrack.id, 'distortion')} className="w-full text-left px-4 py-2 text-xs hover:bg-zinc-800 text-zinc-300 block">Distortion</button>
-                                        <button onClick={() => addEffect(selectedTrack.id, 'delay')} className="w-full text-left px-4 py-2 text-xs hover:bg-zinc-800 text-zinc-300 block">Digital Delay</button>
-                                    </div>
-                                </div>
+                                <button 
+                                    onClick={() => { setEffectSelectorTrackId(selectedTrack.id); setShowEffectSelector(true); }}
+                                    className="text-[10px] bg-desert-500 text-black font-bold px-3 py-1 rounded-full flex gap-1 items-center hover:bg-white transition-colors shadow-lg shadow-desert-500/20"
+                                >
+                                    <Plus className="w-3 h-3" /> FX
+                                </button>
                             </div>
                             
                             <div className="flex flex-col gap-2 min-h-[100px]">

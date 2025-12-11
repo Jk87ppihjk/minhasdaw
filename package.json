@@ -11,7 +11,7 @@
   "dependencies": {
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "lucide-react": "^0.559.0",
+    "lucide-react": "0.263.1",
     "jszip": "3.10.1",
     "file-saver": "2.0.5",
     "vite": "^7.2.7",
