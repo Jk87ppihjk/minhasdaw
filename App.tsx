@@ -126,6 +126,10 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeTool, setActiveTool] = useState<'cursor' | 'split'>('cursor');
   
+  // Processing State (Loading Screen)
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState('');
+  
   const [showEffectSelector, setShowEffectSelector] = useState(false);
   const [effectSelectorTrackId, setEffectSelectorTrackId] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -166,6 +170,9 @@ export default function App() {
   const dragStartXRef = useRef<number>(0);
   const dragOriginalStartTimeRef = useRef<number>(0);
   
+  // Scrubbing Ref (to hold the time while dragging without re-renders lagging)
+  const currentScrubTimeRef = useRef<number | null>(null);
+
   // Collision Detection Constraints
   const dragConstraintsRef = useRef<{ min: number; max: number }>({ min: 0, max: Infinity });
 
@@ -180,6 +187,7 @@ export default function App() {
 
   // --- Helpers ---
   const formatTime = (seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return "0:00.00";
     const min = Math.floor(seconds / 60);
     const sec = Math.floor(seconds % 60);
     const ms = Math.floor((seconds % 1) * 100);
@@ -385,24 +393,52 @@ export default function App() {
       }
   };
 
+  // FIX: Ajuste do Split para não "jogar o áudio para o lado" (dessincronia)
   const splitTrack = () => {
     if (!selectedTrackId) return;
     const track = tracks.find(t => t.id === selectedTrackId);
     if (!track) return;
+    
+    // Ensure precise time from current visual state
     const splitTime = audioState.currentTime;
+    
     const clipToSplit = track.clips.find(c => splitTime > c.startTime && splitTime < (c.startTime + c.duration));
     if (!clipToSplit) return; 
+    
+    // Stop playback of this clip if running
     if (audioState.isPlaying) audioEngine.stopClip(clipToSplit.id);
+    
     const relativeSplit = splitTime - clipToSplit.startTime;
-    const leftClip: Clip = { ...clipToSplit, duration: relativeSplit };
-    const rightClip: Clip = { ...clipToSplit, id: crypto.randomUUID(), startTime: splitTime, duration: clipToSplit.duration - relativeSplit, audioOffset: clipToSplit.audioOffset + relativeSplit, name: `${clipToSplit.name} (Part)` };
+    
+    // Safeguard: Don't split if too close to edges
+    if (relativeSplit < 0.05 || (clipToSplit.duration - relativeSplit) < 0.05) return;
+
+    // Create left clip (trimmed duration)
+    const leftClip: Clip = { 
+        ...clipToSplit, 
+        duration: relativeSplit 
+    };
+    
+    // Create right clip (new start time, offset adjusted)
+    // The key here is exact math to ensure visual continuity
+    const rightClip: Clip = { 
+        ...clipToSplit, 
+        id: crypto.randomUUID(), 
+        startTime: splitTime, 
+        duration: clipToSplit.duration - relativeSplit, 
+        audioOffset: clipToSplit.audioOffset + relativeSplit, 
+        name: `${clipToSplit.name} (Part)` 
+    };
+    
     setTracks(prev => prev.map(t => {
         if (t.id === track.id) {
+            // Remove old, add two new
             const otherClips = t.clips.filter(c => c.id !== clipToSplit.id);
             return { ...t, clips: [...otherClips, leftClip, rightClip] };
         }
         return t;
     }));
+    
     setSelectedClipId(rightClip.id);
   };
 
@@ -470,18 +506,25 @@ export default function App() {
     setAudioState(prev => ({ ...prev, loop: { ...prev.loop, active: !prev.loop.active } }));
   };
 
-  const togglePlay = useCallback(() => {
+  const togglePlay = useCallback((startTime?: number) => {
     audioEngine.resumeContext();
     setAudioState(prev => {
-        if (prev.isPlaying) {
+        if (prev.isPlaying && startTime === undefined) {
+            // Stop
             audioEngine.stopAll();
             cancelAnimationFrame(rafRef.current);
             return { ...prev, isPlaying: false, currentTime: playStartCursorRef.current };
         } else {
-            playStartCursorRef.current = prev.currentTime;
-            const startCursor = prev.currentTime;
+            // Play
+            const startCursor = startTime !== undefined ? startTime : prev.currentTime;
+            
+            // Set References for Loop
+            playStartCursorRef.current = startCursor;
             playbackAnchorTimeRef.current = audioEngine.currentTime - startCursor;
-            audioEngine.startTransport(startCursor); // Start Metronome
+            
+            // Sync Engine
+            audioEngine.startTransport(startCursor); 
+            
             return { ...prev, isPlaying: true };
         }
     });
@@ -527,6 +570,10 @@ export default function App() {
                cancelAnimationFrame(rafRef.current);
                return;
             }
+            
+            // Safety check for NaN
+            if (!Number.isFinite(visualTime)) visualTime = 0;
+            
             setAudioState(prev => ({ ...prev, currentTime: Math.max(0, visualTime) }));
             rafRef.current = requestAnimationFrame(loop);
         };
@@ -546,6 +593,7 @@ export default function App() {
   }, [audioState.bpm, audioState.metronomeOn]);
 
   const playActiveSegments = (startCursor: number) => {
+    if (!Number.isFinite(startCursor)) return;
     tracks.forEach(track => {
         track.clips.forEach(clip => {
             const clipStart = clip.startTime;
@@ -638,15 +686,20 @@ export default function App() {
       return () => window.removeEventListener('click', handleClick);
   }, []);
 
-  const handleRemoveNoise = () => {
+  const handleRemoveNoise = async () => {
       if (!contextMenu.clipId || !contextMenu.trackId) return;
+      closeContextMenu(); // Fecha menu imediatamente
+
+      // Ativa tela de carregamento
+      setIsProcessing(true);
+      setProcessingMessage('REMOVENDO RUÍDO...');
       
       const track = tracks.find(t => t.id === contextMenu.trackId);
       const clip = track?.clips.find(c => c.id === contextMenu.clipId);
       
       if (clip && clip.buffer) {
-          // Process audio buffer
-          const newBuffer = audioEngine.applyNoiseReduction(clip.buffer);
+          // Process audio buffer ASYNC
+          const newBuffer = await audioEngine.applyNoiseReduction(clip.buffer);
           
           setTracks(prev => prev.map(t => {
               if (t.id === contextMenu.trackId) {
@@ -662,11 +715,10 @@ export default function App() {
               }
               return t;
           }));
-          
-          // Flash notification or something (optional)
-          console.log("Noise reduction applied to", clip.name);
       }
-      closeContextMenu();
+      
+      // Desativa tela de carregamento
+      setIsProcessing(false);
   };
 
   // --- UI Interactions ---
@@ -735,7 +787,19 @@ export default function App() {
             return; 
           }
           
-          if (isScrubbingRef.current) { setAudioState(prev => ({ ...prev, currentTime: t })); return; }
+          // --- SCRUBBING LOGIC (NEEDLE DRAG) ---
+          if (isScrubbingRef.current) { 
+              let scrubTime = t;
+              if (audioState.snapToGrid) {
+                  const spb = 60 / audioState.bpm;
+                  scrubTime = Math.round(t / (spb/4)) * (spb/4);
+              }
+              scrubTime = Math.max(0, scrubTime);
+              
+              currentScrubTimeRef.current = scrubTime;
+              setAudioState(prev => ({ ...prev, currentTime: scrubTime })); 
+              return; 
+          }
 
           // --- LOGICA DE ARRASTO COM COLISÃO ---
           if (draggingClipId && draggingTrackId && activeTool === 'cursor') {
@@ -763,8 +827,19 @@ export default function App() {
           }
       };
       const handleMouseUp = () => {
-          if (isScrubbingRef.current) { isScrubbingRef.current = false; if (wasPlayingRef.current) togglePlay(); }
-          isDraggingLoopStartRef.current = false; isDraggingLoopEndRef.current = false; isCreatingLoopRef.current = false;
+          if (isScrubbingRef.current) { 
+              isScrubbingRef.current = false; 
+              // If we were playing, restart precisely at the scrubbed time
+              if (wasPlayingRef.current && currentScrubTimeRef.current !== null) {
+                  togglePlay(currentScrubTimeRef.current);
+              }
+              currentScrubTimeRef.current = null;
+          }
+          
+          isDraggingLoopStartRef.current = false; 
+          isDraggingLoopEndRef.current = false; 
+          isCreatingLoopRef.current = false;
+          
           if (draggingClipId) {
               if (audioState.isPlaying && draggingTrackId) {
                    audioEngine.stopClip(draggingClipId);
@@ -787,7 +862,7 @@ export default function App() {
   const { Ruler, GridLines } = useMemo(() => {
       const secondsPerBeat = 60 / audioState.bpm;
       const secondsPerBar = secondsPerBeat * 4; 
-      const totalBars = Math.ceil(audioState.totalDuration / secondsPerBar);
+      const totalBars = Math.ceil(Math.max(120, audioState.totalDuration) / secondsPerBar);
       const markers = []; const gridLines = [];
       for(let i = 0; i < totalBars; i++) {
           const left = i * secondsPerBar * pixelsPerSecond;
@@ -811,6 +886,15 @@ export default function App() {
         onContextMenu={(e) => e.preventDefault()} // Disable default context menu globally
     >
       
+      {/* PROCESSING OVERLAY (LOADING SCREEN) */}
+      {isProcessing && (
+          <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center cursor-wait animate-in fade-in duration-300">
+              <div className="w-16 h-16 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin mb-6"></div>
+              <h2 className="text-[var(--accent)] text-xl font-black tracking-[0.3em] uppercase animate-pulse">{processingMessage}</h2>
+              <p className="text-[var(--text-muted)] text-xs mt-2 uppercase tracking-widest">Please Wait</p>
+          </div>
+      )}
+
       {/* Context Menu */}
       {contextMenu.visible && (
           <div 
@@ -938,7 +1022,7 @@ export default function App() {
 
                 <div className="bg-[var(--bg-element)] rounded-full px-2 py-1.5 flex items-center gap-2 border border-[var(--border-color)] shadow-inner">
                     <button onClick={handleStop} className="p-2 hover:bg-[var(--bg-main)] rounded-full text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors"><Square className="w-4 h-4 fill-current" /></button>
-                    <button onClick={togglePlay} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${audioState.isPlaying ? 'bg-[var(--accent)] text-black shadow-lg' : 'bg-[var(--bg-panel)] text-[var(--text-main)] hover:bg-[var(--bg-main)] border border-[var(--border-color)]'}`}>
+                    <button onClick={() => togglePlay()} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${audioState.isPlaying ? 'bg-[var(--accent)] text-black shadow-lg' : 'bg-[var(--bg-panel)] text-[var(--text-main)] hover:bg-[var(--bg-main)] border border-[var(--border-color)]'}`}>
                         {audioState.isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
                     </button>
                     <button onClick={toggleRecord} className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all ${audioState.isRecording ? 'bg-red-600 border-red-500 text-white animate-pulse' : 'bg-[var(--bg-element)] border-[var(--border-color)] text-red-500 hover:text-red-400'}`}>
@@ -1031,7 +1115,21 @@ export default function App() {
                                 const x = e.clientX - rect.left + scrollContainerRef.current!.scrollLeft;
                                 const t = x / pixelsPerSecond;
                                 if(e.shiftKey) { isCreatingLoopRef.current = true; loopStartAnchorRef.current = t; setAudioState(p => ({...p, loop: {...p.loop, active: true, start: t, end: t}})); } 
-                                else { isScrubbingRef.current = true; wasPlayingRef.current = audioState.isPlaying; if (audioState.isPlaying) togglePlay(); setAudioState(p => ({...p, currentTime: t})); }
+                                else { 
+                                    isScrubbingRef.current = true; 
+                                    wasPlayingRef.current = audioState.isPlaying; 
+                                    // Stop immediately to prevent glitches while dragging
+                                    audioEngine.stopAll();
+                                    
+                                    let newTime = t;
+                                    if (audioState.snapToGrid) {
+                                        const spb = 60 / audioState.bpm;
+                                        newTime = Math.round(t / (spb/4)) * (spb/4);
+                                    }
+                                    
+                                    setAudioState(p => ({...p, isPlaying: false, currentTime: newTime})); 
+                                    currentScrubTimeRef.current = newTime;
+                                }
                             }}
                         >
                             {Ruler}
