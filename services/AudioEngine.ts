@@ -531,7 +531,7 @@ class AudioEngineService {
             const dry = chain.effectNodes[`${uniqueId}_dry`] as GainNode;
             const wet = chain.effectNodes[`${uniqueId}_wet`] as GainNode;
 
-            if (pre && tone && dry && wet) {
+            if (pre && tone && dry && wet && conv) {
                 pre.delayTime.setTargetAtTime(r.preDelay / 1000, now, 0.1);
                 tone.frequency.setTargetAtTime(r.tone, now, 0.1);
                 dry.gain.setTargetAtTime(Math.cos(r.mix * 0.5 * Math.PI), now, 0.1);
@@ -539,9 +539,13 @@ class AudioEngineService {
 
                 if (chain.lastReverbParams && 
                    (Math.abs(chain.lastReverbParams.time - r.time) > 0.1 || Math.abs(chain.lastReverbParams.size - r.size) > 0.1)) {
-                       const impulse = this.generateReverbImpulse(r.time, r.size);
-                       conv.buffer = impulse;
-                       chain.lastReverbParams = { time: r.time, size: r.size };
+                       try {
+                           const impulse = this.generateReverbImpulse(r.time, r.size);
+                           conv.buffer = impulse;
+                           chain.lastReverbParams = { time: r.time, size: r.size };
+                       } catch(e) {
+                           console.warn("Reverb buffer update failed", e);
+                       }
                 }
             }
         }
@@ -614,7 +618,8 @@ class AudioEngineService {
 
   private generateReverbImpulse(duration: number, size: number): AudioBuffer {
       const rate = this.context.sampleRate;
-      const length = rate * duration;
+      // FIX: Ensure length is a positive integer to prevent createBuffer crash
+      const length = Math.max(1, Math.floor(rate * (duration || 2.0)));
       const impulse = this.context.createBuffer(2, length, rate);
       const L = impulse.getChannelData(0);
       const R = impulse.getChannelData(1);
