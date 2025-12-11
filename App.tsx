@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette, Activity, FolderOpen } from 'lucide-react';
+import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette, Activity, FolderOpen, Wand2 } from 'lucide-react';
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
 import { audioEngine } from './services/AudioEngine';
-import { Track, TrackType, AudioEngineState, Clip, EffectSettings } from './types';
+import { Track, TrackType, AudioEngineState, Clip, EffectSettings, ContextMenuState } from './types';
 import { EffectRegistry } from './services/EffectRegistry';
 import { Waveform } from './components/Waveform';
 import { Knob } from './components/Knob';
@@ -140,6 +140,15 @@ export default function App() {
     metronomeOn: false,
     masterVolume: 0.8,
     loop: { active: false, start: 0, end: 4 }
+  });
+
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+      visible: false,
+      x: 0,
+      y: 0,
+      trackId: null,
+      clipId: null
   });
 
   const [openedEffect, setOpenedEffect] = useState<{ trackId: string, effectId: string } | null>(null);
@@ -606,6 +615,60 @@ export default function App() {
      setShowEffectSelector(false); // Close modal
   };
 
+  // --- Context Menu Logic ---
+  const handleContextMenu = (e: React.MouseEvent, trackId: string, clipId: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setContextMenu({
+          visible: true,
+          x: e.clientX,
+          y: e.clientY,
+          trackId,
+          clipId
+      });
+  };
+
+  const closeContextMenu = () => {
+      setContextMenu(prev => ({ ...prev, visible: false }));
+  };
+
+  useEffect(() => {
+      const handleClick = () => closeContextMenu();
+      window.addEventListener('click', handleClick);
+      return () => window.removeEventListener('click', handleClick);
+  }, []);
+
+  const handleRemoveNoise = () => {
+      if (!contextMenu.clipId || !contextMenu.trackId) return;
+      
+      const track = tracks.find(t => t.id === contextMenu.trackId);
+      const clip = track?.clips.find(c => c.id === contextMenu.clipId);
+      
+      if (clip && clip.buffer) {
+          // Process audio buffer
+          const newBuffer = audioEngine.applyNoiseReduction(clip.buffer);
+          
+          setTracks(prev => prev.map(t => {
+              if (t.id === contextMenu.trackId) {
+                  return {
+                      ...t,
+                      clips: t.clips.map(c => {
+                          if (c.id === contextMenu.clipId) {
+                              return { ...c, buffer: newBuffer };
+                          }
+                          return c;
+                      })
+                  };
+              }
+              return t;
+          }));
+          
+          // Flash notification or something (optional)
+          console.log("Noise reduction applied to", clip.name);
+      }
+      closeContextMenu();
+  };
+
   // --- UI Interactions ---
   const handleClipMouseDown = (e: React.MouseEvent, trackId: string, clipId: string) => {
       if (e.button !== 0 || activeTool === 'split') return; 
@@ -745,8 +808,31 @@ export default function App() {
     <div 
         className="flex flex-col h-screen w-full bg-[var(--bg-main)] text-[var(--text-main)] font-sans selection:bg-[var(--accent)] selection:text-black overflow-hidden relative transition-colors duration-300"
         style={THEMES[theme] as React.CSSProperties}
+        onContextMenu={(e) => e.preventDefault()} // Disable default context menu globally
     >
       
+      {/* Context Menu */}
+      {contextMenu.visible && (
+          <div 
+            className="fixed z-[100] bg-[#1a1a1a] border border-[#333] rounded-lg shadow-xl py-1 min-w-[150px] animate-in fade-in zoom-in-95 duration-100"
+            style={{ top: contextMenu.y, left: contextMenu.x }}
+          >
+              <button 
+                onClick={handleRemoveNoise}
+                className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#e6c200] hover:text-black flex items-center gap-2"
+              >
+                  <Wand2 className="w-3 h-3" /> Remove Noise
+              </button>
+              <div className="h-[1px] bg-[#333] my-1"></div>
+              <button 
+                onClick={deleteSelectedClip}
+                className="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-900/20 flex items-center gap-2"
+              >
+                  <Trash2 className="w-3 h-3" /> Delete Clip
+              </button>
+          </div>
+      )}
+
       {/* Modals */}
       {showEffectSelector && effectSelectorTrackId && (
           <EffectSelector 
@@ -984,7 +1070,13 @@ export default function App() {
                             {tracks.map(track => (
                                 <div key={track.id} className={`h-28 flex-shrink-0 relative border-b border-[var(--border-color)] group ${track.muted ? 'opacity-40 grayscale' : ''}`}>
                                     {track.clips.map(clip => (
-                                        <div key={clip.id} onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id)} className={`absolute top-2 bottom-2 rounded-md overflow-hidden cursor-move border transition-all shadow-md ${selectedClipId === clip.id ? 'border-[var(--text-main)] bg-[var(--waveform-bg)] z-30 shadow-xl' : 'border-[var(--border-color)] bg-[var(--bg-element)] z-10 hover:border-[var(--text-muted)]'}`} style={{ left: `${clip.startTime * pixelsPerSecond}px`, width: `${clip.duration * pixelsPerSecond}px` }}>
+                                        <div 
+                                            key={clip.id} 
+                                            onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id)} 
+                                            onContextMenu={(e) => handleContextMenu(e, track.id, clip.id)}
+                                            className={`absolute top-2 bottom-2 rounded-md overflow-hidden cursor-move border transition-all shadow-md ${selectedClipId === clip.id ? 'border-[var(--text-main)] bg-[var(--waveform-bg)] z-30 shadow-xl' : 'border-[var(--border-color)] bg-[var(--bg-element)] z-10 hover:border-[var(--text-muted)]'}`} 
+                                            style={{ left: `${clip.startTime * pixelsPerSecond}px`, width: `${clip.duration * pixelsPerSecond}px` }}
+                                        >
                                             <div className="w-full h-full opacity-80 pointer-events-none p-1"><Waveform buffer={clip.buffer} color={selectedClipId === clip.id ? "bg-[var(--waveform-wave)]" : "bg-[var(--text-muted)]"} start={clip.audioOffset} duration={clip.duration} /></div>
                                             <div className="absolute top-0 left-0 w-full px-2 py-0.5 bg-gradient-to-b from-black/50 to-transparent text-[9px] font-bold text-white truncate pointer-events-none">{clip.name}</div>
                                         </div>

@@ -72,6 +72,14 @@ export interface AudioEngineState {
   };
 }
 
+export interface ContextMenuState {
+  visible: boolean;
+  x: number;
+  y: number;
+  trackId: string | null;
+  clipId: string | null;
+}
+
 // --- NOVO SISTEMA DE PLUGINS ---
 
 export interface EffectPlugin<T = any> {

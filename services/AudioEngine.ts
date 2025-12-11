@@ -208,6 +208,63 @@ class AudioEngineService {
       return chain?.tunerState || null;
   }
 
+  // --- PROCESSING UTILS ---
+  
+  /**
+   * Applies a simple Noise Gate to the AudioBuffer destructively.
+   * Scans audio, if level is below threshold (-40dB approx), it silences it with a smooth fade.
+   */
+  public applyNoiseReduction(buffer: AudioBuffer): AudioBuffer {
+      const channels = buffer.numberOfChannels;
+      const rate = buffer.sampleRate;
+      const length = buffer.length;
+      
+      // Create a new buffer to avoid modifying the original reference unexpectedly if used elsewhere
+      const newBuffer = this.context.createBuffer(channels, length, rate);
+      
+      // Threshold: 0.005 is roughly -46dB. 
+      // 0.01 is -40dB. Let's use a conservative -40dB for "Room Noise".
+      const threshold = 0.008; 
+      
+      // Smoothing (Attack/Release envelope simulation)
+      const attack = 0.002; // samples smoothing factor
+      const release = 0.0005;
+
+      for (let c = 0; c < channels; c++) {
+          const inputData = buffer.getChannelData(c);
+          const outputData = newBuffer.getChannelData(c);
+          
+          let envelope = 0;
+
+          for (let i = 0; i < length; i++) {
+              const inputSample = inputData[i];
+              const inputAbs = Math.abs(inputSample);
+
+              // Envelope Follower
+              if (inputAbs > envelope) {
+                  envelope += (inputAbs - envelope) * attack;
+              } else {
+                  envelope += (inputAbs - envelope) * release;
+              }
+
+              // Gate Logic
+              // If envelope is below threshold, gain drops to 0. Otherwise 1.
+              // Use a soft knee for better sound.
+              let gain = 1.0;
+              if (envelope < threshold) {
+                  // Fade out quickly based on how far below threshold
+                  gain = Math.max(0, envelope / threshold);
+                  // Apply a square to make the dropoff sharper but smooth
+                  gain = gain * gain * gain;
+              }
+
+              outputData[i] = inputSample * gain;
+          }
+      }
+      
+      return newBuffer;
+  }
+
   // --- Track Chain Management ---
 
   private getOrCreateTrackChain(track: Track): TrackChain {
@@ -296,8 +353,12 @@ class AudioEngineService {
             let currentPitchFactor = 1.0;
             let targetPitchFactor = 1.0;
             const settings = track.effects.autoPitch;
+            
+            // Attach settings to node for updates
+            (processor as any)._settings = settings;
 
             processor.onaudioprocess = (e) => {
+                const currentSettings = (processor as any)._settings || settings;
                 const input = e.inputBuffer.getChannelData(0);
                 const output = e.outputBuffer.getChannelData(0);
                 const pitch = this.autoCorrelate(input, this.context.sampleRate);
@@ -305,7 +366,7 @@ class AudioEngineService {
                 if (pitch !== -1) {
                     const midiNote = this.noteFromPitch(pitch);
                     const rawNoteName = NOTE_STRINGS[midiNote % 12];
-                    const correctedMidi = this.getScaleNote(midiNote, settings.scale);
+                    const correctedMidi = this.getScaleNote(midiNote, currentSettings.scale);
                     const targetFreq = this.frequencyFromNoteNumber(correctedMidi);
                     const correctedNoteName = NOTE_STRINGS[correctedMidi % 12];
                     
@@ -325,7 +386,7 @@ class AudioEngineService {
                     if (chain.tunerState) chain.tunerState.isSilence = true;
                 }
 
-                const smoothing = Math.max(0.0001, settings.speed * 0.1); 
+                const smoothing = Math.max(0.0001, currentSettings.speed * 0.1); 
                 const grainLen = 1024;
 
                 for (let i = 0; i < input.length; i++) {
@@ -379,185 +440,172 @@ class AudioEngineService {
             currentInput = makeup;
         }
         else if (effectId === 'reverb' && track.effects.reverb.active) {
-            const inputSplit = this.context.createGain();
-            const dryGain = this.context.createGain();
-            const wetGain = this.context.createGain();
-            const preDelay = this.context.createDelay(1.0);
-            const toneFilter = this.context.createBiquadFilter();
-            const convolver = this.context.createConvolver();
-            const outputMerge = this.context.createGain();
-
             const r = track.effects.reverb;
-            preDelay.delayTime.value = r.preDelay / 1000;
-            toneFilter.type = 'lowpass';
-            toneFilter.frequency.value = r.tone;
+            // Create Nodes
+            const inputSplit = this.context.createGain();
+            const dry = this.context.createGain();
+            const wet = this.context.createGain();
+            const pre = this.context.createDelay();
+            const tone = this.context.createBiquadFilter();
+            const conv = this.context.createConvolver();
+            const merge = this.context.createGain();
+
+            // Config
+            dry.gain.value = Math.cos(r.mix * 0.5 * Math.PI);
+            wet.gain.value = Math.sin(r.mix * 0.5 * Math.PI);
+            pre.delayTime.value = r.preDelay / 1000;
+            tone.type = 'lowpass';
+            tone.frequency.value = r.tone;
             
-            const impulse = this.generateReverbImpulse(r.time, r.size);
-            convolver.buffer = impulse;
-            chain.lastReverbParams = { time: r.time, size: r.size };
+            try {
+                const impulse = this.generateReverbImpulse(r.time, r.size);
+                conv.buffer = impulse;
+                chain.lastReverbParams = { time: r.time, size: r.size };
+            } catch(e) {}
 
-            dryGain.gain.value = Math.cos(r.mix * 0.5 * Math.PI);
-            wetGain.gain.value = Math.sin(r.mix * 0.5 * Math.PI);
+            // Store
+            chain.effectNodes[`${uniqueId}_input`] = inputSplit;
+            chain.effectNodes[`${uniqueId}_dry`] = dry;
+            chain.effectNodes[`${uniqueId}_wet`] = wet;
+            chain.effectNodes[`${uniqueId}_pre`] = pre;
+            chain.effectNodes[`${uniqueId}_tone`] = tone;
+            chain.effectNodes[`${uniqueId}_conv`] = conv;
+            chain.effectNodes[`${uniqueId}_merge`] = merge;
 
+            // Connect
             currentInput.connect(inputSplit);
-            inputSplit.connect(dryGain);
-            dryGain.connect(outputMerge);
-            inputSplit.connect(preDelay);
-            preDelay.connect(toneFilter);
-            toneFilter.connect(convolver);
-            convolver.connect(wetGain);
-            wetGain.connect(outputMerge);
-
-            chain.effectNodes[`${uniqueId}_pre`] = preDelay;
-            chain.effectNodes[`${uniqueId}_tone`] = toneFilter;
-            chain.effectNodes[`${uniqueId}_conv`] = convolver;
-            chain.effectNodes[`${uniqueId}_dry`] = dryGain;
-            chain.effectNodes[`${uniqueId}_wet`] = wetGain;
-
-            currentInput = outputMerge;
+            inputSplit.connect(dry); dry.connect(merge);
+            inputSplit.connect(pre); pre.connect(tone); tone.connect(conv); conv.connect(wet); wet.connect(merge);
+            currentInput = merge;
         }
         else if (effectId === 'distortion') {
-            const n = this.context.createWaveShaper();
-            n.curve = this.makeDistortionCurve(track.effects.distortion);
-            n.oversample = '4x';
-            chainNode(n, uniqueId);
+             const distNode = this.context.createWaveShaper();
+             distNode.curve = this.makeDistortionCurve(track.effects.distortion);
+             distNode.oversample = '4x';
+             chain.effectNodes[uniqueId] = distNode;
+             currentInput.connect(distNode);
+             currentInput = distNode;
         }
         else if (effectId === 'delay' && track.effects.delay.active) {
-            const delay = this.context.createDelay();
-            delay.delayTime.value = track.effects.delay.time;
-            const fb = this.context.createGain();
-            fb.gain.value = track.effects.delay.feedback;
-            delay.connect(fb);
-            fb.connect(delay);
-            chain.effectNodes[`${uniqueId}_delay`] = delay;
-            chain.effectNodes[`${uniqueId}_fb`] = fb;
-            currentInput.connect(delay);
-            currentInput = delay; 
-        }
-    });
+             const d = track.effects.delay;
+             const delay = this.context.createDelay();
+             delay.delayTime.value = d.time;
+             const feedback = this.context.createGain();
+             feedback.gain.value = d.feedback;
+             
+             const inputNode = this.context.createGain();
+             const dry = this.context.createGain();
+             const wet = this.context.createGain();
+             const outputNode = this.context.createGain();
 
-    currentInput.connect(chain.analyser);
-  }
+             dry.gain.value = 1 - d.mix;
+             wet.gain.value = d.mix;
 
-  updateTrackSettings = (track: Track) => {
-    const chain = this.getOrCreateTrackChain(track);
-    chain.panner.pan.setTargetAtTime(track.pan, this.context.currentTime, 0.1);
-
-    // Auto-Detect Structural Changes
-    let needsRebuild = false;
-    
-    // Check Parametric EQ Topology
-    if (track.activeEffects.includes('parametricEQ')) {
-        if (chain.parametricEQNodes.length !== track.effects.parametricEQ.bands.length) needsRebuild = true;
-    }
-
-    // Check Active/Inactive states of complex effects
-    track.activeEffects.forEach((effectId, index) => {
-        const uniqueId = `${effectId}_${index}`;
-        
-        // PLUGIN SYSTEM CHECK
-        const plugin = EffectRegistry.get(effectId);
-        if (plugin) {
-             const hasNodes = !!chain.effectNodes[uniqueId];
-             // In current simplified plugin system, active state might be handled inside update, 
-             // but if we were destroying nodes based on active state, we'd check here.
-             // For now, let's assume plugins handle bypass internally via update().
-             return;
-        }
-
-        // LEGACY CHECKS
-        if (effectId === 'compressor') {
-            const hasNodes = !!chain.effectNodes[`${uniqueId}_comp`];
-            if (track.effects.compressor.active !== hasNodes) needsRebuild = true;
-        } else if (effectId === 'reverb') {
-            const hasNodes = !!chain.effectNodes[`${uniqueId}_conv`];
-            if (track.effects.reverb.active !== hasNodes) needsRebuild = true;
-        } else if (effectId === 'autoPitch') {
-            const hasNodes = !!chain.tunerProcessor; 
-            if (track.effects.autoPitch.active !== hasNodes) needsRebuild = true;
-        }
-    });
-
-    if (needsRebuild) {
-        this.rebuildTrackEffects(track);
-        return;
-    }
-
-    // Update Parameters
-    if (track.activeEffects.includes('parametricEQ')) {
-        track.effects.parametricEQ.bands.forEach((band, i) => {
-            const node = chain.parametricEQNodes[i];
-            if (node) {
-                node.type = band.type;
-                node.frequency.setTargetAtTime(band.freq, this.context.currentTime, 0.05);
-                node.gain.setTargetAtTime(band.gain, this.context.currentTime, 0.05);
-                node.Q.setTargetAtTime(band.q, this.context.currentTime, 0.05);
-            }
-        });
-    }
-
-    track.activeEffects.forEach((effectId, index) => {
-        const uniqueId = `${effectId}_${index}`;
-        const now = this.context.currentTime;
-
-        // 1. PLUGIN UPDATE (FIX: Fallback to defaults if setting is missing)
-        const plugin = EffectRegistry.get(effectId);
-        if (plugin) {
-             const node = chain.effectNodes[uniqueId];
-             if (node) {
-                 plugin.update(node, track.effects[effectId] || plugin.defaultSettings, this.context);
-             }
-             return;
-        }
-
-        // 2. LEGACY UPDATE
-        if (effectId === 'compressor') {
-            const comp = chain.effectNodes[`${uniqueId}_comp`] as DynamicsCompressorNode;
-            const makeup = chain.effectNodes[`${uniqueId}_makeup`] as GainNode;
-            if (comp && makeup) {
-                comp.threshold.setTargetAtTime(track.effects.compressor.threshold, now, 0.1);
-                comp.ratio.setTargetAtTime(track.effects.compressor.ratio, now, 0.1);
-                comp.attack.setTargetAtTime(track.effects.compressor.attack, now, 0.1);
-                comp.release.setTargetAtTime(track.effects.compressor.release, now, 0.1);
-                comp.knee.setTargetAtTime(track.effects.compressor.knee, now, 0.1);
-                makeup.gain.setTargetAtTime(Math.pow(10, track.effects.compressor.makeup / 20), now, 0.1);
-            }
-        }
-        else if (effectId === 'reverb') {
-            const r = track.effects.reverb;
-            const pre = chain.effectNodes[`${uniqueId}_pre`] as DelayNode;
-            const tone = chain.effectNodes[`${uniqueId}_tone`] as BiquadFilterNode;
-            const conv = chain.effectNodes[`${uniqueId}_conv`] as ConvolverNode;
-            const dry = chain.effectNodes[`${uniqueId}_dry`] as GainNode;
-            const wet = chain.effectNodes[`${uniqueId}_wet`] as GainNode;
-
-            if (pre && tone && dry && wet && conv) {
-                pre.delayTime.setTargetAtTime(r.preDelay / 1000, now, 0.1);
-                tone.frequency.setTargetAtTime(r.tone, now, 0.1);
-                dry.gain.setTargetAtTime(Math.cos(r.mix * 0.5 * Math.PI), now, 0.1);
-                wet.gain.setTargetAtTime(Math.sin(r.mix * 0.5 * Math.PI), now, 0.1);
-
-                if (chain.lastReverbParams && 
-                   (Math.abs(chain.lastReverbParams.time - r.time) > 0.1 || Math.abs(chain.lastReverbParams.size - r.size) > 0.1)) {
-                       try {
-                           const impulse = this.generateReverbImpulse(r.time, r.size);
-                           conv.buffer = impulse;
-                           chain.lastReverbParams = { time: r.time, size: r.size };
-                       } catch(e) {
-                           console.warn("Reverb buffer update failed", e);
-                       }
-                }
-            }
-        }
-        else if (effectId === 'distortion') {
-             const distNode = chain.effectNodes[uniqueId] as WaveShaperNode;
-             if (distNode) distNode.curve = this.makeDistortionCurve(track.effects.distortion);
+             currentInput.connect(inputNode);
+             inputNode.connect(dry); dry.connect(outputNode);
+             
+             inputNode.connect(delay);
+             delay.connect(feedback); feedback.connect(delay);
+             delay.connect(wet); wet.connect(outputNode);
+             
+             chain.effectNodes[`${uniqueId}_delay`] = delay;
+             chain.effectNodes[`${uniqueId}_feedback`] = feedback;
+             chain.effectNodes[`${uniqueId}_dry`] = dry;
+             chain.effectNodes[`${uniqueId}_wet`] = wet;
+             
+             currentInput = outputNode;
         }
     });
 
     if (chain.effectNodes['eqLow']) (chain.effectNodes['eqLow'] as BiquadFilterNode).gain.setTargetAtTime(track.effects.eqLow.gain, this.context.currentTime, 0.1);
     if (chain.effectNodes['eqMid']) (chain.effectNodes['eqMid'] as BiquadFilterNode).gain.setTargetAtTime(track.effects.eqMid.gain, this.context.currentTime, 0.1);
     if (chain.effectNodes['eqHigh']) (chain.effectNodes['eqHigh'] as BiquadFilterNode).gain.setTargetAtTime(track.effects.eqHigh.gain, this.context.currentTime, 0.1);
+  }
+
+  public updateTrackSettings(track: Track) {
+      const chain = this.trackChains.get(track.id);
+      if (!chain) return;
+
+      // Pan
+      chain.panner.pan.setTargetAtTime(track.pan, this.context.currentTime, 0.1);
+
+      // Iterate active effects to update params
+      track.activeEffects.forEach((effectId, index) => {
+          const uniqueId = `${effectId}_${index}`;
+          const plugin = EffectRegistry.get(effectId);
+
+          if (plugin) {
+               const node = chain.effectNodes[uniqueId];
+               if (node) plugin.update(node, track.effects[effectId] || plugin.defaultSettings, this.context);
+          } else {
+              if (effectId === 'autoPitch') {
+                  const node = chain.effectNodes[uniqueId] as ScriptProcessorNode;
+                  if (node) (node as any)._settings = track.effects.autoPitch;
+              }
+              else if (effectId === 'compressor') {
+                 const comp = chain.effectNodes[`${uniqueId}_comp`] as DynamicsCompressorNode;
+                 const makeup = chain.effectNodes[`${uniqueId}_makeup`] as GainNode;
+                 const s = track.effects.compressor;
+                 if (comp) {
+                     comp.threshold.setTargetAtTime(s.threshold, this.context.currentTime, 0.1);
+                     comp.ratio.setTargetAtTime(s.ratio, this.context.currentTime, 0.1);
+                     comp.attack.setTargetAtTime(s.attack, this.context.currentTime, 0.1);
+                     comp.release.setTargetAtTime(s.release, this.context.currentTime, 0.1);
+                     comp.knee.setTargetAtTime(s.knee, this.context.currentTime, 0.1);
+                 }
+                 if (makeup) makeup.gain.setTargetAtTime(Math.pow(10, s.makeup / 20), this.context.currentTime, 0.1);
+              }
+              else if (effectId === 'distortion') {
+                  const node = chain.effectNodes[uniqueId] as WaveShaperNode;
+                  if (node) node.curve = this.makeDistortionCurve(track.effects.distortion);
+              }
+              else if (effectId === 'reverb') {
+                  const r = track.effects.reverb;
+                  const pre = chain.effectNodes[`${uniqueId}_pre`] as DelayNode;
+                  const tone = chain.effectNodes[`${uniqueId}_tone`] as BiquadFilterNode;
+                  const dry = chain.effectNodes[`${uniqueId}_dry`] as GainNode;
+                  const wet = chain.effectNodes[`${uniqueId}_wet`] as GainNode;
+                  const conv = chain.effectNodes[`${uniqueId}_conv`] as ConvolverNode;
+                  
+                  if (pre) pre.delayTime.setTargetAtTime(r.preDelay / 1000, this.context.currentTime, 0.1);
+                  if (tone) tone.frequency.setTargetAtTime(r.tone, this.context.currentTime, 0.1);
+                  if (dry) dry.gain.setTargetAtTime(Math.cos(r.mix * 0.5 * Math.PI), this.context.currentTime, 0.1);
+                  if (wet) wet.gain.setTargetAtTime(Math.sin(r.mix * 0.5 * Math.PI), this.context.currentTime, 0.1);
+                  
+                  if (conv && chain.lastReverbParams && (chain.lastReverbParams.time !== r.time || chain.lastReverbParams.size !== r.size)) {
+                       try {
+                           conv.buffer = this.generateReverbImpulse(r.time, r.size);
+                           chain.lastReverbParams = { time: r.time, size: r.size };
+                       } catch(e) {}
+                  }
+              }
+              else if (effectId === 'delay') {
+                  const d = track.effects.delay;
+                  const delay = chain.effectNodes[`${uniqueId}_delay`] as DelayNode;
+                  const feedback = chain.effectNodes[`${uniqueId}_feedback`] as GainNode;
+                  const dry = chain.effectNodes[`${uniqueId}_dry`] as GainNode;
+                  const wet = chain.effectNodes[`${uniqueId}_wet`] as GainNode;
+                  
+                  if (delay) delay.delayTime.setTargetAtTime(d.time, this.context.currentTime, 0.1);
+                  if (feedback) feedback.gain.setTargetAtTime(d.feedback, this.context.currentTime, 0.1);
+                  if (dry) dry.gain.setTargetAtTime(1 - d.mix, this.context.currentTime, 0.1);
+                  if (wet) wet.gain.setTargetAtTime(d.mix, this.context.currentTime, 0.1);
+              }
+              else if (effectId === 'parametricEQ') {
+                  if (chain.parametricEQNodes.length === track.effects.parametricEQ.bands.length) {
+                      chain.parametricEQNodes.forEach((node, i) => {
+                          const band = track.effects.parametricEQ.bands[i];
+                          node.type = band.type;
+                          node.frequency.setTargetAtTime(band.freq, this.context.currentTime, 0.1);
+                          node.Q.setTargetAtTime(band.q, this.context.currentTime, 0.1);
+                          node.gain.setTargetAtTime(band.gain, this.context.currentTime, 0.1);
+                      });
+                  } else {
+                      this.rebuildTrackEffects(track);
+                  }
+              }
+          }
+      });
   }
 
   setTrackVolume = (trackId: string, volume: number) => {
