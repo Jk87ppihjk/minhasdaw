@@ -47,6 +47,17 @@ class AudioEngineService {
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
 
+  // --- Metronome State ---
+  private isMetronomePlaying: boolean = false;
+  private metronomeEnabled: boolean = false;
+  private bpm: number = 120;
+  private nextNoteTime: number = 0.0;
+  private currentBeat: number = 0;
+  private lookahead: number = 25.0; // ms
+  private scheduleAheadTime: number = 0.1; // seconds
+  private timerID: number | null = null;
+  private metronomeVolume: number = 0.5;
+
   constructor() {
     this.context = new (window.AudioContext || (window as any).webkitAudioContext)({
       sampleRate: 44100,
@@ -64,6 +75,78 @@ class AudioEngineService {
 
   setMasterVolume = (value: number) => {
     this.masterGain.gain.setTargetAtTime(value, this.context.currentTime, 0.01);
+  }
+
+  // --- Metronome Logic ---
+
+  public setBpm(bpm: number) {
+      this.bpm = bpm;
+  }
+
+  public setMetronomeStatus(enabled: boolean) {
+      this.metronomeEnabled = enabled;
+  }
+
+  public startTransport(startTime: number = 0) {
+      if (this.isMetronomePlaying) return;
+      this.isMetronomePlaying = true;
+      
+      // Sync metronome start to the exact audio time we want playback to appear to start
+      // Se startTime for 0, o próximo beat é AGORA. Se for no meio, calculamos.
+      this.currentBeat = 0;
+      this.nextNoteTime = this.context.currentTime + 0.05; // Pequeno delay para garantir estabilidade
+
+      this.scheduler();
+  }
+
+  public stopTransport() {
+      this.isMetronomePlaying = false;
+      if (this.timerID) {
+          window.clearTimeout(this.timerID);
+          this.timerID = null;
+      }
+  }
+
+  private nextNote() {
+      const secondsPerBeat = 60.0 / this.bpm;
+      this.nextNoteTime += secondsPerBeat;
+      this.currentBeat++;
+      if (this.currentBeat === 4) {
+          this.currentBeat = 0;
+      }
+  }
+
+  private scheduleNote(beatNumber: number, time: number) {
+      if (!this.metronomeEnabled) return;
+
+      const osc = this.context.createOscillator();
+      const envelope = this.context.createGain();
+
+      // High pitch for beat 1 (downbeat), low pitch for others
+      osc.frequency.value = (beatNumber % 4 === 0) ? 1000 : 600;
+
+      envelope.gain.value = this.metronomeVolume;
+      envelope.gain.exponentialRampToValueAtTime(this.metronomeVolume, time + 0.001);
+      envelope.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+
+      osc.connect(envelope);
+      envelope.connect(this.masterGain);
+
+      osc.start(time);
+      osc.stop(time + 0.05);
+  }
+
+  private scheduler = () => {
+      // While there are notes that will need to play before the next interval, 
+      // schedule them and advance the pointer.
+      while (this.nextNoteTime < this.context.currentTime + this.scheduleAheadTime) {
+          this.scheduleNote(this.currentBeat, this.nextNoteTime);
+          this.nextNote();
+      }
+      
+      if (this.isMetronomePlaying) {
+          this.timerID = window.setTimeout(this.scheduler, this.lookahead);
+      }
   }
 
   // --- Tuner Logic Helpers (LEGACY) ---
@@ -520,6 +603,7 @@ class AudioEngineService {
   }
 
   stopAll = () => {
+    this.stopTransport();
     this.sources.forEach((source) => { try { source.stop(); source.disconnect(); } catch (e) { } });
     this.sources.clear();
   }

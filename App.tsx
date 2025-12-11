@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette } from 'lucide-react';
+import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette, Activity } from 'lucide-react';
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
 import { audioEngine } from './services/AudioEngine';
@@ -395,6 +395,7 @@ export default function App() {
             playStartCursorRef.current = prev.currentTime;
             const startCursor = prev.currentTime;
             playbackAnchorTimeRef.current = audioEngine.currentTime - startCursor;
+            audioEngine.startTransport(startCursor); // Start Metronome
             return { ...prev, isPlaying: true };
         }
     });
@@ -431,6 +432,7 @@ export default function App() {
                     audioEngine.stopAll();
                     visualTime = audioState.loop.start;
                     playbackAnchorTimeRef.current = now - audioState.loop.start;
+                    audioEngine.startTransport(visualTime); // Restart metronome sync
                     playActiveSegments(visualTime);
                 }
             } else if (visualTime >= audioState.totalDuration) {
@@ -450,6 +452,12 @@ export default function App() {
     }
     return () => cancelAnimationFrame(rafRef.current);
   }, [audioState.isPlaying, audioState.loop]); 
+
+  // Sync BPM and Metronome with Engine
+  useEffect(() => {
+      audioEngine.setBpm(audioState.bpm);
+      audioEngine.setMetronomeStatus(audioState.metronomeOn);
+  }, [audioState.bpm, audioState.metronomeOn]);
 
   const playActiveSegments = (startCursor: number) => {
     tracks.forEach(track => {
@@ -737,6 +745,28 @@ export default function App() {
         {/* Central Transport Capsule */}
         <div className="flex flex-col items-center justify-center flex-1">
             <div className="flex items-center gap-6">
+                
+                {/* BPM & Metronome Controls */}
+                <div className="flex items-center gap-2 bg-[var(--bg-element)] rounded-lg px-2 py-1 border border-[var(--border-color)]">
+                    <div className="flex flex-col items-center">
+                        <span className="text-[8px] font-bold text-[var(--text-muted)] tracking-wider">BPM</span>
+                        <input 
+                            type="number" 
+                            value={audioState.bpm} 
+                            onChange={(e) => setAudioState(p => ({ ...p, bpm: Math.max(40, Math.min(300, parseInt(e.target.value))) }))}
+                            className="w-10 bg-transparent text-[var(--accent)] font-mono text-center text-xs font-bold outline-none"
+                        />
+                    </div>
+                    <div className="h-6 w-[1px] bg-[var(--border-color)] mx-1"></div>
+                    <button 
+                        onClick={() => setAudioState(p => ({ ...p, metronomeOn: !p.metronomeOn }))}
+                        className={`p-1.5 rounded transition-all ${audioState.metronomeOn ? 'bg-[var(--accent)] text-black shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
+                        title="Metronome"
+                    >
+                        <Activity className="w-4 h-4" />
+                    </button>
+                </div>
+
                 <div className="bg-[var(--bg-element)] rounded-full px-2 py-1.5 flex items-center gap-2 border border-[var(--border-color)] shadow-inner">
                     <button onClick={handleStop} className="p-2 hover:bg-[var(--bg-main)] rounded-full text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors"><Square className="w-4 h-4 fill-current" /></button>
                     <button onClick={togglePlay} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${audioState.isPlaying ? 'bg-[var(--accent)] text-black shadow-lg' : 'bg-[var(--bg-panel)] text-[var(--text-main)] hover:bg-[var(--bg-main)] border border-[var(--border-color)]'}`}>
