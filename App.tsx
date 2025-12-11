@@ -18,7 +18,7 @@ import { DistortionEffect } from './components/effects/DistortionEffect';
 const BASE_PX_PER_SEC = 50;
 
 // --- THEME CONFIGURATION ---
-const THEMES = {
+const THEMES: Record<string, React.CSSProperties> = {
   dark: {
     '--bg-main': '#050505',
     '--bg-panel': '#0a0a0a',
@@ -29,7 +29,7 @@ const THEMES = {
     '--accent': '#e6c200',
     '--waveform-bg': '#27272a',
     '--waveform-wave': '#a1a1aa'
-  },
+  } as React.CSSProperties,
   light: {
     '--bg-main': '#f4f4f5', // zinc-100
     '--bg-panel': '#ffffff',
@@ -40,18 +40,62 @@ const THEMES = {
     '--accent': '#d97706', // amber-600
     '--waveform-bg': '#e4e4e7',
     '--waveform-wave': '#52525b'
-  },
+  } as React.CSSProperties,
   yellow: {
     '--bg-main': '#fef08a', // yellow-200
     '--bg-panel': '#facc15', // yellow-400
     '--bg-element': '#eab308', // yellow-500
-    '--text-main': '#422006', // yellow-950 (brownish)
+    '--text-main': '#422006', // yellow-950
     '--text-muted': '#854d0e', // yellow-800
     '--border-color': '#a16207', // yellow-700
     '--accent': '#000000',
     '--waveform-bg': '#ca8a04',
     '--waveform-wave': '#ffffff'
-  }
+  } as React.CSSProperties,
+  blue: {
+    '--bg-main': '#020617', // slate-950
+    '--bg-panel': '#0f172a', // slate-900
+    '--bg-element': '#1e293b', // slate-800
+    '--text-main': '#f1f5f9', // slate-100
+    '--text-muted': '#64748b', // slate-500
+    '--border-color': '#334155', // slate-700
+    '--accent': '#38bdf8', // sky-400
+    '--waveform-bg': '#1e293b',
+    '--waveform-wave': '#7dd3fc'
+  } as React.CSSProperties,
+  green: {
+    '--bg-main': '#022c22', // teal-950
+    '--bg-panel': '#064e3b', // teal-900
+    '--bg-element': '#115e59', // teal-800
+    '--text-main': '#ccfbf1', // teal-100
+    '--text-muted': '#5eead4', // teal-300
+    '--border-color': '#134e4a', // teal-800
+    '--accent': '#34d399', // emerald-400
+    '--waveform-bg': '#064e3b',
+    '--waveform-wave': '#6ee7b7'
+  } as React.CSSProperties,
+  red: {
+    '--bg-main': '#2a0a0a', 
+    '--bg-panel': '#450a0a',
+    '--bg-element': '#7f1d1d',
+    '--text-main': '#fecdd3', // rose-200
+    '--text-muted': '#fb7185', // rose-400
+    '--border-color': '#881337', // rose-900
+    '--accent': '#f43f5e', // rose-500
+    '--waveform-bg': '#4c0519',
+    '--waveform-wave': '#fda4af'
+  } as React.CSSProperties,
+  purple: {
+    '--bg-main': '#1e1b4b', // indigo-950
+    '--bg-panel': '#312e81', // indigo-900
+    '--bg-element': '#4338ca', // indigo-700
+    '--text-main': '#e0e7ff', // indigo-100
+    '--text-muted': '#818cf8', // indigo-400
+    '--border-color': '#3730a3', // indigo-800
+    '--accent': '#c084fc', // purple-400
+    '--waveform-bg': '#312e81',
+    '--waveform-wave': '#a78bfa'
+  } as React.CSSProperties
 };
 
 const BASE_DEFAULTS: EffectSettings = {
@@ -74,7 +118,7 @@ const BASE_DEFAULTS: EffectSettings = {
 export default function App() {
   // State
   const [welcomeScreen, setWelcomeScreen] = useState(true);
-  const [theme, setTheme] = useState<'dark' | 'light' | 'yellow'>('dark');
+  const [theme, setTheme] = useState<string>('dark');
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
@@ -137,9 +181,10 @@ export default function App() {
 
   // --- Theme Toggle ---
   const toggleTheme = () => {
-    if (theme === 'dark') setTheme('light');
-    else if (theme === 'light') setTheme('yellow');
-    else setTheme('dark');
+    const keys = Object.keys(THEMES);
+    const currentIndex = keys.indexOf(theme);
+    const nextIndex = (currentIndex + 1) % keys.length;
+    setTheme(keys[nextIndex]);
   };
 
   // --- Real-time Mixing Logic ---
