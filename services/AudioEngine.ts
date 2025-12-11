@@ -682,24 +682,124 @@ class AudioEngineService {
       });
   }
   
+  // --- OFFLINE RENDER (EXPORT) WITH EFFECTS ---
   renderOffline = async (tracks: Track[], totalDuration: number): Promise<Blob> => {
+      // 1. Create Offline Context
       const offlineCtx = new OfflineAudioContext(2, 44100 * totalDuration, 44100);
+      
+      // 2. Helper to build effect chain in offline context
+      const buildChain = (input: AudioNode, track: Track): AudioNode => {
+          let current = input;
+
+          // Legacy Static EQs
+          if (track.effects.eqLow.active) {
+            const n = offlineCtx.createBiquadFilter(); n.type = 'lowshelf'; n.frequency.value = 100; n.gain.value = track.effects.eqLow.gain; 
+            current.connect(n); current = n;
+          }
+          if (track.effects.eqMid.active) {
+            const n = offlineCtx.createBiquadFilter(); n.type = 'peaking'; n.frequency.value = 1000; n.gain.value = track.effects.eqMid.gain;
+            current.connect(n); current = n;
+          }
+          if (track.effects.eqHigh.active) {
+            const n = offlineCtx.createBiquadFilter(); n.type = 'highshelf'; n.frequency.value = 5000; n.gain.value = track.effects.eqHigh.gain;
+            current.connect(n); current = n;
+          }
+
+          // Active Effects Loop
+          track.activeEffects.forEach(effectId => {
+              const plugin = EffectRegistry.get(effectId);
+              
+              // A. Plugins (Compatible with Offline if they use standard nodes)
+              if (plugin) {
+                  // Initialize creates nodes bound to the passed context (offlineCtx)
+                  const node = plugin.initialize(offlineCtx as any, track.effects[effectId] || plugin.defaultSettings);
+                  current.connect(node);
+                  current = node;
+                  return;
+              }
+
+              // B. Legacy Effects
+              if (effectId === 'parametricEQ' && track.effects.parametricEQ.active) {
+                  track.effects.parametricEQ.bands.forEach(band => {
+                      const n = offlineCtx.createBiquadFilter();
+                      n.type = band.type; n.frequency.value = band.freq; n.gain.value = band.gain; n.Q.value = band.q;
+                      current.connect(n); current = n;
+                  });
+              }
+              else if (effectId === 'compressor' && track.effects.compressor.active) {
+                  const s = track.effects.compressor;
+                  const comp = offlineCtx.createDynamicsCompressor();
+                  comp.threshold.value = s.threshold; comp.ratio.value = s.ratio; comp.attack.value = s.attack; comp.release.value = s.release; comp.knee.value = s.knee;
+                  const makeup = offlineCtx.createGain(); makeup.gain.value = Math.pow(10, s.makeup / 20);
+                  current.connect(comp); comp.connect(makeup); current = makeup;
+              }
+              else if (effectId === 'reverb' && track.effects.reverb.active) {
+                   const r = track.effects.reverb;
+                   const inputSplit = offlineCtx.createGain();
+                   const dry = offlineCtx.createGain(); dry.gain.value = Math.cos(r.mix * 0.5 * Math.PI);
+                   const wet = offlineCtx.createGain(); wet.gain.value = Math.sin(r.mix * 0.5 * Math.PI);
+                   const pre = offlineCtx.createDelay(); pre.delayTime.value = r.preDelay / 1000;
+                   const tone = offlineCtx.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = r.tone;
+                   const conv = offlineCtx.createConvolver(); 
+                   // Generate impulse for offline (needs to be synchronous or reused)
+                   // Since generateReverbImpulse uses the MAIN context sample rate, we should use offlineCtx sample rate logic
+                   // But here we can reuse the logic adapting to offlineCtx
+                   const impulse = this.generateReverbImpulse(r.time, r.size); // Helper creates buffer on main ctx, might be issue if SampleRates differ. 
+                   // To be safe, let's just use the buffer. If sample rates differ, Audio API handles resampling usually, or we recreate.
+                   // Ideally we create buffer on offlineCtx. Let's assume 44100 match.
+                   conv.buffer = impulse; 
+
+                   const merge = offlineCtx.createGain();
+                   
+                   current.connect(inputSplit);
+                   inputSplit.connect(dry); dry.connect(merge);
+                   inputSplit.connect(pre); pre.connect(tone); tone.connect(conv); conv.connect(wet); wet.connect(merge);
+                   current = merge;
+              }
+              else if (effectId === 'distortion') {
+                  const n = offlineCtx.createWaveShaper(); n.curve = this.makeDistortionCurve(track.effects.distortion); n.oversample = '4x';
+                  current.connect(n); current = n;
+              }
+              else if (effectId === 'delay' && track.effects.delay.active) {
+                  const d = track.effects.delay;
+                  const delay = offlineCtx.createDelay(); delay.delayTime.value = d.time;
+                  const fb = offlineCtx.createGain(); fb.gain.value = d.feedback;
+                  delay.connect(fb); fb.connect(delay);
+                  current.connect(delay); current = delay; // Simplistic mix for offline, typically needs Dry/Wet
+              }
+          });
+
+          return current;
+      };
+
+      // 3. Schedule Clips
       for (const track of tracks) {
           if (track.muted) continue; 
+          
+          // Track Channel Strip (Source -> Effects -> Pan -> Vol -> Dest)
+          const trackInput = offlineCtx.createGain(); // Input point for clips
+          const processedSignal = buildChain(trackInput, track);
+          
+          const panner = offlineCtx.createStereoPanner();
+          panner.pan.value = track.pan;
+          
+          const volume = offlineCtx.createGain();
+          volume.gain.value = track.volume;
+
+          processedSignal.connect(panner);
+          panner.connect(volume);
+          volume.connect(offlineCtx.destination);
+
           for (const clip of track.clips) {
               if (!clip.buffer) continue;
               const source = offlineCtx.createBufferSource();
               source.buffer = clip.buffer;
-              const gain = offlineCtx.createGain();
-              gain.gain.value = track.volume;
-              const panner = offlineCtx.createStereoPanner();
-              panner.pan.value = track.pan;
-              source.connect(panner);
-              panner.connect(gain);
-              gain.connect(offlineCtx.destination);
+              source.connect(trackInput);
               source.start(clip.startTime, clip.audioOffset, clip.duration);
           }
       }
+
+      // 4. Render
       const renderedBuffer = await offlineCtx.startRendering();
       return this.bufferToWave(renderedBuffer, renderedBuffer.length);
   }

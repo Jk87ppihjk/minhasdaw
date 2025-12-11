@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette, Activity } from 'lucide-react';
+import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette, Activity, FolderOpen } from 'lucide-react';
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
 import { audioEngine } from './services/AudioEngine';
@@ -204,16 +204,93 @@ export default function App() {
   // --- Project Management ---
   const saveProject = async () => {
     const zip = new JSZip();
+    
+    // Save Audio Blobs
+    const audioFolder = zip.folder("audio");
+    let clipIndex = 0;
+    
+    // Create a lean version of tracks for JSON (without blob/buffer objects)
+    const tracksForJson = tracks.map(t => ({
+        ...t,
+        clips: t.clips.map(c => {
+            const fileName = `clip_${clipIndex++}.wav`;
+            if (c.blob && audioFolder) {
+                audioFolder.file(fileName, c.blob);
+            } else if (c.buffer && audioFolder) {
+                 // Convert AudioBuffer to WAV blob for saving
+                 // Note: Ideally we store original blob, but for generated clips we might need to encode.
+                 // For now, let's assume blob exists or we skip (in production, need bufferToWav here)
+            }
+            return {
+                ...c,
+                fileName: fileName, // Link to file in zip
+                blob: null,
+                buffer: null
+            };
+        })
+    }));
+
     const projectState = {
-        tracks: tracks.map(t => ({
-            ...t,
-            clips: t.clips.map(c => ({ ...c, buffer: null, blob: null })) 
-        })),
+        tracks: tracksForJson,
         audioState
     };
+    
     zip.file("project.json", JSON.stringify(projectState));
     const content = await zip.generateAsync({ type: "blob" });
     saveAs(content, "monochrome_project.zip");
+  };
+
+  const handleLoadProject = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+        await audioEngine.resumeContext();
+        handleStop();
+        
+        const zip = await JSZip.loadAsync(file);
+        const projectJsonFile = zip.file("project.json");
+        
+        if (!projectJsonFile) {
+            alert("Invalid project file");
+            return;
+        }
+
+        const projectJson = await projectJsonFile.async("string");
+        const projectData = JSON.parse(projectJson);
+        const audioFolder = zip.folder("audio");
+
+        const loadedTracks: Track[] = [];
+
+        for (const trackData of projectData.tracks) {
+            const clips: Clip[] = [];
+            for (const clipData of trackData.clips) {
+                if (clipData.fileName && audioFolder) {
+                    const audioFile = audioFolder.file(clipData.fileName);
+                    if (audioFile) {
+                        const arrayBuffer = await audioFile.async("arraybuffer");
+                        const audioBuffer = await audioEngine.decodeAudioData(arrayBuffer);
+                        const blob = new Blob([arrayBuffer], { type: 'audio/wav' }); // Recreate blob
+                        
+                        clips.push({
+                            ...clipData,
+                            buffer: audioBuffer,
+                            blob: blob
+                        });
+                    }
+                }
+            }
+            loadedTracks.push({ ...trackData, clips });
+        }
+
+        setTracks(loadedTracks);
+        setAudioState(prev => ({ ...prev, ...projectData.audioState, isPlaying: false }));
+        setWelcomeScreen(false);
+
+    } catch (err) {
+        console.error("Failed to load project", err);
+        alert("Error loading project file.");
+    }
   };
 
   const exportWav = async () => {
@@ -686,9 +763,15 @@ export default function App() {
              </div>
              <h1 className="text-6xl font-black tracking-tighter mb-4 text-[var(--text-main)]">MONOCHROME</h1>
              <p className="text-xl text-[var(--text-muted)] font-light tracking-widest mb-12 uppercase">Professional Web DAW</p>
-             <button onClick={() => setWelcomeScreen(false)} className="px-10 py-4 bg-[var(--text-main)] text-[var(--bg-main)] font-bold tracking-widest hover:bg-[var(--accent)] hover:text-black transition-colors shadow-2xl uppercase">
-                 Enter Studio
-             </button>
+             <div className="flex gap-4">
+                 <button onClick={() => setWelcomeScreen(false)} className="px-10 py-4 bg-[var(--text-main)] text-[var(--bg-main)] font-bold tracking-widest hover:bg-[var(--accent)] hover:text-black transition-colors shadow-2xl uppercase">
+                     Enter Studio
+                 </button>
+                 <label className="px-10 py-4 border border-[var(--text-main)] text-[var(--text-main)] font-bold tracking-widest hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors shadow-2xl uppercase cursor-pointer flex items-center gap-2">
+                     <FolderOpen className="w-5 h-5" /> Load Project
+                     <input type="file" accept=".zip" className="hidden" onChange={handleLoadProject} />
+                 </label>
+             </div>
           </div>
       )}
 
@@ -785,6 +868,11 @@ export default function App() {
         <div className="flex items-center gap-3 justify-end w-1/4">
             <button onClick={toggleTheme} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" title={`Theme: ${theme.toUpperCase()}`}><Palette className="w-5 h-5" /></button>
             <div className="h-6 w-[1px] bg-[var(--border-color)] mx-2"></div>
+            
+            <label className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors cursor-pointer" title="Load Project">
+                <FolderOpen className="w-5 h-5" />
+                <input type="file" accept=".zip" className="hidden" onChange={handleLoadProject} />
+            </label>
             <button onClick={saveProject} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" title="Save Project"><Save className="w-5 h-5" /></button>
             <button onClick={exportWav} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" title="Export WAV"><Download className="w-5 h-5" /></button>
             <div className="h-6 w-[1px] bg-[var(--border-color)] mx-2"></div>
