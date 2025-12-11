@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette, Activity, FolderOpen, Wand2 } from 'lucide-react';
+import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette, Activity, FolderOpen, Wand2, Copy, ArrowLeftRight, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed } from 'lucide-react';
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
 import { audioEngine } from './services/AudioEngine';
@@ -384,6 +384,24 @@ export default function App() {
       if (selectedTrackId === id) setSelectedTrackId(null);
   };
 
+  const duplicateTrack = (id: string) => {
+      const trackToClone = tracks.find(t => t.id === id);
+      if (!trackToClone) return;
+
+      const newTrack: Track = {
+          ...trackToClone,
+          id: crypto.randomUUID(),
+          name: `${trackToClone.name} (Copy)`,
+          clips: trackToClone.clips.map(c => ({
+              ...c,
+              id: crypto.randomUUID(),
+              // Note: buffers are references, which is fine for RAM, but if we edit destructively we should deep clone.
+              // For simplicity in this demo, we share reference until an edit happens (handled in processing).
+          }))
+      };
+      setTracks(prev => [...prev, newTrack]);
+  };
+
   const editTrackName = (id: string) => {
       const track = tracks.find(t => t.id === id);
       if (!track) return;
@@ -686,38 +704,67 @@ export default function App() {
       return () => window.removeEventListener('click', handleClick);
   }, []);
 
-  const handleRemoveNoise = async () => {
+  const processClipBuffer = async (action: 'noise' | 'fadein' | 'fadeout' | 'reverse' | 'normalize' | 'neural' | 'silence' | 'removesilence' | 'invert' | 'gain' | 'lofi' | 'deesser') => {
       if (!contextMenu.clipId || !contextMenu.trackId) return;
-      closeContextMenu(); // Fecha menu imediatamente
+      closeContextMenu();
 
-      // Ativa tela de carregamento
       setIsProcessing(true);
-      setProcessingMessage('REMOVENDO RUÍDO...');
+      const messages: Record<string, string> = {
+          'noise': 'REMOVENDO RUÍDO...',
+          'fadein': 'APPLYING FADE IN...',
+          'fadeout': 'APPLYING FADE OUT...',
+          'reverse': 'REVERSING AUDIO...',
+          'normalize': 'NORMALIZING...',
+          'neural': 'NEURAL ENHANCE AI...',
+          'silence': 'SILENCING SELECTION...',
+          'removesilence': 'AUTO CUTTING SILENCE...',
+          'invert': 'INVERTING PHASE...',
+          'gain': 'BOOSTING GAIN...',
+          'lofi': 'CRUSHING BITS...',
+          'deesser': 'POLISHING VOCALS...'
+      };
+      setProcessingMessage(messages[action] || 'PROCESSING...');
       
       const track = tracks.find(t => t.id === contextMenu.trackId);
       const clip = track?.clips.find(c => c.id === contextMenu.clipId);
       
       if (clip && clip.buffer) {
-          // Process audio buffer ASYNC
-          const newBuffer = await audioEngine.applyNoiseReduction(clip.buffer);
+          let newBuffer: AudioBuffer | null = null;
           
-          setTracks(prev => prev.map(t => {
-              if (t.id === contextMenu.trackId) {
-                  return {
-                      ...t,
-                      clips: t.clips.map(c => {
-                          if (c.id === contextMenu.clipId) {
-                              return { ...c, buffer: newBuffer };
-                          }
-                          return c;
-                      })
-                  };
-              }
-              return t;
-          }));
+          if (action === 'noise') newBuffer = await audioEngine.applyNoiseReduction(clip.buffer);
+          else if (action === 'fadein') newBuffer = await audioEngine.applyFade(clip.buffer, 'in', 1.0);
+          else if (action === 'fadeout') newBuffer = await audioEngine.applyFade(clip.buffer, 'out', 1.0);
+          else if (action === 'reverse') newBuffer = await audioEngine.reverseBuffer(clip.buffer);
+          else if (action === 'normalize') newBuffer = await audioEngine.normalizeBuffer(clip.buffer);
+          else if (action === 'neural') newBuffer = await audioEngine.applyNeuralEnhance(clip.buffer);
+          else if (action === 'silence') newBuffer = await audioEngine.applySilence(clip.buffer);
+          else if (action === 'removesilence') newBuffer = await audioEngine.removeSilence(clip.buffer);
+          else if (action === 'invert') newBuffer = await audioEngine.applyInvertPhase(clip.buffer);
+          else if (action === 'gain') newBuffer = await audioEngine.applyGain(clip.buffer, 3.0); // +3dB
+          else if (action === 'lofi') newBuffer = await audioEngine.applyLoFi(clip.buffer);
+          else if (action === 'deesser') newBuffer = await audioEngine.applyDeEsser(clip.buffer);
+
+          if (newBuffer) {
+              setTracks(prev => prev.map(t => {
+                  if (t.id === contextMenu.trackId) {
+                      return {
+                          ...t,
+                          clips: t.clips.map(c => {
+                              if (c.id === contextMenu.clipId) {
+                                  return { 
+                                      ...c, 
+                                      buffer: newBuffer!, 
+                                      duration: newBuffer!.duration // Update duration if buffer length changed (removeSilence)
+                                  };
+                              }
+                              return c;
+                          })
+                      };
+                  }
+                  return t;
+              }));
+          }
       }
-      
-      // Desativa tela de carregamento
       setIsProcessing(false);
   };
 
@@ -898,20 +945,60 @@ export default function App() {
       {/* Context Menu */}
       {contextMenu.visible && (
           <div 
-            className="fixed z-[100] bg-[#1a1a1a] border border-[#333] rounded-lg shadow-xl py-1 min-w-[150px] animate-in fade-in zoom-in-95 duration-100"
+            className="fixed z-[100] bg-[#1a1a1a] border border-[#333] rounded-lg shadow-xl py-1 min-w-[200px] animate-in fade-in zoom-in-95 duration-100 flex flex-col"
             style={{ top: contextMenu.y, left: contextMenu.x }}
           >
-              <button 
-                onClick={handleRemoveNoise}
-                className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#e6c200] hover:text-black flex items-center gap-2"
-              >
+              <div className="px-3 py-2 text-[10px] text-[#555] font-bold uppercase tracking-wider border-b border-[#333]">Clip Operations</div>
+              
+              {/* --- PRO FEATURES SECTION --- */}
+              <button onClick={() => processClipBuffer('removesilence')} className="w-full text-left px-4 py-2 text-xs font-bold text-[#e6c200] hover:bg-[#e6c200]/10 flex items-center gap-2 group">
+                  <ScissorsLineDashed className="w-3 h-3 group-hover:animate-pulse" /> Remove Silence (Auto) <span className="bg-[#e6c200] text-black text-[9px] px-1 rounded ml-auto">PRO</span>
+              </button>
+              <button onClick={() => processClipBuffer('neural')} className="w-full text-left px-4 py-2 text-xs font-bold text-[#e6c200] hover:bg-[#e6c200]/10 flex items-center gap-2 group">
+                  <Sparkles className="w-3 h-3 group-hover:animate-pulse" /> Neural Enhance <span className="bg-[#e6c200] text-black text-[9px] px-1 rounded ml-auto">PRO</span>
+              </button>
+              <button onClick={() => processClipBuffer('lofi')} className="w-full text-left px-4 py-2 text-xs font-bold text-[#e6c200] hover:bg-[#e6c200]/10 flex items-center gap-2 group">
+                  <Radio className="w-3 h-3 group-hover:animate-pulse" /> Lo-Fi Crusher <span className="bg-[#e6c200] text-black text-[9px] px-1 rounded ml-auto">PRO</span>
+              </button>
+              <button onClick={() => processClipBuffer('deesser')} className="w-full text-left px-4 py-2 text-xs font-bold text-[#e6c200] hover:bg-[#e6c200]/10 flex items-center gap-2 group">
+                  <Mic2 className="w-3 h-3 group-hover:animate-pulse" /> Vocal De-Esser <span className="bg-[#e6c200] text-black text-[9px] px-1 rounded ml-auto">PRO</span>
+              </button>
+              
+              <div className="h-[1px] bg-[#333] my-1"></div>
+
+              {/* --- UTILITIES --- */}
+              <button onClick={() => processClipBuffer('normalize')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2">
+                  <TrendingUp className="w-3 h-3" /> Normalize (0dB)
+              </button>
+              <button onClick={() => processClipBuffer('gain')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2">
+                  <Volume2 className="w-3 h-3" /> Boost Gain (+3dB)
+              </button>
+              <button onClick={() => processClipBuffer('silence')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2">
+                  <VolumeX className="w-3 h-3" /> Silence Selection
+              </button>
+              <button onClick={() => processClipBuffer('invert')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2">
+                  <ArrowLeftRight className="w-3 h-3 rotate-90" /> Invert Phase
+              </button>
+              <button onClick={() => processClipBuffer('reverse')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2">
+                  <ArrowLeftRight className="w-3 h-3" /> Reverse
+              </button>
+              
+              <div className="h-[1px] bg-[#333] my-1"></div>
+
+              {/* --- FADES & RESTORATION --- */}
+              <button onClick={() => processClipBuffer('fadein')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2">
+                  <TrendingUp className="w-3 h-3 rotate-45" /> Fade In (1s)
+              </button>
+              <button onClick={() => processClipBuffer('fadeout')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2">
+                  <TrendingUp className="w-3 h-3 rotate-180" /> Fade Out (1s)
+              </button>
+              <button onClick={() => processClipBuffer('noise')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2">
                   <Wand2 className="w-3 h-3" /> Remove Noise
               </button>
+              
               <div className="h-[1px] bg-[#333] my-1"></div>
-              <button 
-                onClick={deleteSelectedClip}
-                className="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-900/20 flex items-center gap-2"
-              >
+              
+              <button onClick={deleteSelectedClip} className="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-900/20 flex items-center gap-2">
                   <Trash2 className="w-3 h-3" /> Delete Clip
               </button>
           </div>
@@ -1086,7 +1173,10 @@ export default function App() {
                                         <span className={`font-bold text-sm truncate w-24 ${selectedTrackId === track.id ? 'text-[var(--text-main)]' : 'text-[var(--text-muted)]'}`} onDoubleClick={() => editTrackName(track.id)}>{track.name}</span>
                                         <span className="text-[9px] text-[var(--text-muted)] uppercase tracking-widest">{track.type}</span>
                                     </div>
-                                    <button onClick={(e) => { e.stopPropagation(); deleteTrack(track.id) }} className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-red-500 transition-opacity"><XCircle className="w-3 h-3" /></button>
+                                    <div className="flex gap-1">
+                                        <button onClick={(e) => { e.stopPropagation(); duplicateTrack(track.id) }} className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-white transition-opacity" title="Duplicate Track"><Copy className="w-3 h-3" /></button>
+                                        <button onClick={(e) => { e.stopPropagation(); deleteTrack(track.id) }} className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-red-500 transition-opacity"><XCircle className="w-3 h-3" /></button>
+                                    </div>
                                 </div>
                                 <div className="flex items-center gap-2 mt-2">
                                     <Volume2 className="w-3 h-3 text-[var(--text-muted)]" />

@@ -210,22 +210,366 @@ class AudioEngineService {
 
   // --- PROCESSING UTILS ---
   
-  /**
-   * Applies a simple Noise Gate to the AudioBuffer destructively.
-   * ASYNC to prevent UI blocking.
+  private cloneBuffer(buffer: AudioBuffer): AudioBuffer {
+      const newBuffer = this.context.createBuffer(
+          buffer.numberOfChannels,
+          buffer.length,
+          buffer.sampleRate
+      );
+      for (let i = 0; i < buffer.numberOfChannels; i++) {
+          newBuffer.copyToChannel(buffer.getChannelData(i), i);
+      }
+      return newBuffer;
+  }
+
+  public async applyFade(buffer: AudioBuffer, type: 'in' | 'out', duration: number = 0.5): Promise<AudioBuffer> {
+      return new Promise((resolve) => {
+          const newBuffer = this.cloneBuffer(buffer);
+          const length = newBuffer.length;
+          const rate = newBuffer.sampleRate;
+          const fadeSamples = Math.min(length, Math.floor(rate * duration));
+          
+          for(let c = 0; c < newBuffer.numberOfChannels; c++) {
+              const data = newBuffer.getChannelData(c);
+              if (type === 'in') {
+                  for(let i=0; i<fadeSamples; i++) {
+                      data[i] *= (i / fadeSamples); // Linear Fade In
+                  }
+              } else {
+                  for(let i=0; i<fadeSamples; i++) {
+                      data[length - 1 - i] *= (i / fadeSamples); // Linear Fade Out
+                  }
+              }
+          }
+          resolve(newBuffer);
+      });
+  }
+
+  public async reverseBuffer(buffer: AudioBuffer): Promise<AudioBuffer> {
+      return new Promise((resolve) => {
+          const newBuffer = this.cloneBuffer(buffer);
+          for(let c = 0; c < newBuffer.numberOfChannels; c++) {
+              newBuffer.getChannelData(c).reverse();
+          }
+          resolve(newBuffer);
+      });
+  }
+
+  public async normalizeBuffer(buffer: AudioBuffer): Promise<AudioBuffer> {
+      return new Promise((resolve) => {
+          const newBuffer = this.cloneBuffer(buffer);
+          let maxPeak = 0;
+          
+          for(let c = 0; c < newBuffer.numberOfChannels; c++) {
+              const data = newBuffer.getChannelData(c);
+              for(let i=0; i<data.length; i++) {
+                  const abs = Math.abs(data[i]);
+                  if (abs > maxPeak) maxPeak = abs;
+              }
+          }
+
+          if (maxPeak > 0) {
+              const gain = 0.98 / maxPeak; // -0.2dB ceiling
+              for(let c = 0; c < newBuffer.numberOfChannels; c++) {
+                  const data = newBuffer.getChannelData(c);
+                  for(let i=0; i<data.length; i++) {
+                      data[i] *= gain;
+                  }
+              }
+          }
+          resolve(newBuffer);
+      });
+  }
+
+  // --- NEW STANDARD FEATURES ---
+
+  public async applySilence(buffer: AudioBuffer): Promise<AudioBuffer> {
+      return new Promise((resolve) => {
+          const newBuffer = this.cloneBuffer(buffer);
+          for(let c = 0; c < newBuffer.numberOfChannels; c++) {
+              const data = newBuffer.getChannelData(c);
+              data.fill(0);
+          }
+          resolve(newBuffer);
+      });
+  }
+
+  public async applyInvertPhase(buffer: AudioBuffer): Promise<AudioBuffer> {
+      return new Promise((resolve) => {
+          const newBuffer = this.cloneBuffer(buffer);
+          for(let c = 0; c < newBuffer.numberOfChannels; c++) {
+              const data = newBuffer.getChannelData(c);
+              for(let i=0; i<data.length; i++) {
+                  data[i] = -data[i];
+              }
+          }
+          resolve(newBuffer);
+      });
+  }
+
+  public async applyGain(buffer: AudioBuffer, db: number): Promise<AudioBuffer> {
+      return new Promise((resolve) => {
+          const newBuffer = this.cloneBuffer(buffer);
+          const factor = Math.pow(10, db / 20);
+          
+          for(let c = 0; c < newBuffer.numberOfChannels; c++) {
+              const data = newBuffer.getChannelData(c);
+              for(let i=0; i<data.length; i++) {
+                  data[i] *= factor;
+              }
+          }
+          resolve(newBuffer);
+      });
+  }
+
+  // --- PRO FEATURES ---
+
+  /** PRO 4: Automatic Silence Removal 
+   * Detects gaps > 2s and removes them, keeping 1s padding.
    */
+  public async removeSilence(buffer: AudioBuffer): Promise<AudioBuffer> {
+      return new Promise((resolve) => {
+          setTimeout(() => {
+              const sampleRate = buffer.sampleRate;
+              const channels = buffer.numberOfChannels;
+              const rawData = buffer.getChannelData(0); // Use ch0 for detection
+              
+              // Settings
+              const threshold = 0.005; // ~ -46dB
+              const minSilenceSec = 2.0;
+              const paddingSec = 1.0;
+              
+              const minSilenceLen = minSilenceSec * sampleRate;
+              const paddingLen = paddingSec * sampleRate;
+              
+              // 1. Detect Active Regions
+              const regions: {start: number, end: number}[] = [];
+              let isSound = false;
+              let start = 0;
+              
+              // Optimization: Check every N samples to speed up detection
+              const step = 100; 
+              
+              for (let i = 0; i < rawData.length; i+=step) {
+                  const abs = Math.abs(rawData[i]);
+                  if (abs > threshold) {
+                      if (!isSound) {
+                          start = i;
+                          isSound = true;
+                      }
+                  } else {
+                      if (isSound) {
+                          // Lookahead slightly to confirm silence isn't just a zero-crossing
+                          let trulySilent = true;
+                          for(let j=1; j<10 && (i+j*step)<rawData.length; j++) {
+                              if (Math.abs(rawData[i+j*step]) > threshold) {
+                                  trulySilent = false;
+                                  break;
+                              }
+                          }
+                          
+                          if (trulySilent) {
+                              regions.push({ start, end: i });
+                              isSound = false;
+                          }
+                      }
+                  }
+              }
+              // Close last region if active
+              if (isSound) regions.push({ start, end: rawData.length });
+              
+              if (regions.length === 0) {
+                  // No sound detected, return original (or empty, but original is safer UX)
+                  resolve(buffer);
+                  return;
+              }
+
+              // 2. Expand Regions with Padding & Merge
+              const mergedRegions: {start: number, end: number}[] = [];
+              
+              // First pass: Expand
+              let currentStart = Math.max(0, regions[0].start - paddingLen);
+              let currentEnd = Math.min(rawData.length, regions[0].end + paddingLen);
+              
+              for (let i = 1; i < regions.length; i++) {
+                  const r = regions[i];
+                  const rStart = Math.max(0, r.start - paddingLen);
+                  const rEnd = Math.min(rawData.length, r.end + paddingLen);
+                  
+                  // Determine overlapping or close enough to merge
+                  // We merge if the gap between Current End and Next Start is less than Min Silence
+                  // Actually, strict logic: if gap < minSilence, we treat it as "keep".
+                  // Since we expanded both by padding, the "gap" is effectively reduced.
+                  // If rStart < currentEnd, they overlap -> Merge.
+                  // If rStart - currentEnd < (minSilenceLen), it means original gap was small enough -> Merge.
+                  
+                  if (rStart <= currentEnd) {
+                      // Overlap
+                      currentEnd = Math.max(currentEnd, rEnd);
+                  } else {
+                      // Gap exists. Check duration.
+                      // The effective gap in the *output* would be 0 if we stitched them.
+                      // But the criteria is: "silence > 2s cuts".
+                      // The space between Active Audio A (end) and Active Audio B (start).
+                      // We added padding. 
+                      // Let's re-evaluate logic: simple stitching of padded regions.
+                      
+                      // Check if the "silence" part between active regions (ignoring padding for decision) was < 2s?
+                      // The requirement is: "audio that has silence > 2s... cut".
+                      // So if gap > 2s, we separate. Else we keep.
+                      
+                      // Since we already added padding to 'currentEnd' and 'rStart', 
+                      // if they don't touch, it implies the original gap was > 2*padding (2s).
+                      // Actually, if padding is 1s, 2*padding = 2s.
+                      // So if regions don't overlap after padding, the gap was > 2s. 
+                      // Perfect logic! Just merging overlaps handles the requirement automatically.
+                      
+                      mergedRegions.push({ start: currentStart, end: currentEnd });
+                      currentStart = rStart;
+                      currentEnd = rEnd;
+                  }
+              }
+              mergedRegions.push({ start: currentStart, end: currentEnd });
+              
+              // 3. Construct New Buffer
+              const totalLength = mergedRegions.reduce((acc, r) => acc + (r.end - r.start), 0);
+              
+              if (totalLength === 0 || totalLength >= rawData.length) {
+                  // No silence removed or empty
+                  resolve(buffer);
+                  return;
+              }
+              
+              const newBuffer = this.context.createBuffer(channels, totalLength, sampleRate);
+              
+              for (let c = 0; c < channels; c++) {
+                  const origData = buffer.getChannelData(c);
+                  const newData = newBuffer.getChannelData(c);
+                  let writePtr = 0;
+                  
+                  for (const r of mergedRegions) {
+                      const len = r.end - r.start;
+                      // Safe copy
+                      const chunk = origData.subarray(r.start, r.end);
+                      newData.set(chunk, writePtr);
+                      writePtr += len;
+                  }
+              }
+              
+              resolve(newBuffer);
+          }, 100);
+      });
+  }
+
+  /** PRO 1: Neural Enhance (Already Implemented) */
+  public async applyNeuralEnhance(buffer: AudioBuffer): Promise<AudioBuffer> {
+      return new Promise((resolve) => {
+          setTimeout(() => {
+              const newBuffer = this.cloneBuffer(buffer);
+              const channels = newBuffer.numberOfChannels;
+              
+              const drive = 0.2; 
+              const limitThreshold = 0.95; 
+              
+              for(let c = 0; c < channels; c++) {
+                  const data = newBuffer.getChannelData(c);
+                  for(let i=0; i<data.length; i++) {
+                      let sample = data[i];
+                      sample = sample * (1 + drive);
+                      sample = sample / (1 + Math.abs(sample) * 0.5); 
+                      if (sample > limitThreshold) sample = limitThreshold;
+                      if (sample < -limitThreshold) sample = -limitThreshold;
+                      data[i] = sample;
+                  }
+              }
+              // Normalize post-process
+              let maxPeak = 0;
+              for(let c=0; c<channels; c++) {
+                  const data = newBuffer.getChannelData(c);
+                  for(let i=0; i<data.length; i++) if(Math.abs(data[i]) > maxPeak) maxPeak = Math.abs(data[i]);
+              }
+              if(maxPeak > 0) {
+                  const gain = 0.99 / maxPeak;
+                  for(let c=0; c<channels; c++) {
+                      const data = newBuffer.getChannelData(c);
+                      for(let i=0; i<data.length; i++) data[i] *= gain;
+                  }
+              }
+              resolve(newBuffer);
+          }, 200); 
+      });
+  }
+
+  /** PRO 2: Lo-Fi Crusher
+   * Reduces bit depth and applies mild distortion for vintage feel.
+   */
+  public async applyLoFi(buffer: AudioBuffer): Promise<AudioBuffer> {
+      return new Promise((resolve) => {
+          setTimeout(() => {
+              const newBuffer = this.cloneBuffer(buffer);
+              const channels = newBuffer.numberOfChannels;
+              
+              const bitDepth = 8; // 8-bit sound
+              const step = 1 / Math.pow(2, bitDepth);
+              
+              for(let c = 0; c < channels; c++) {
+                  const data = newBuffer.getChannelData(c);
+                  for(let i=0; i<data.length; i++) {
+                      // Bit Crushing
+                      let sample = data[i];
+                      sample = Math.round(sample / step) * step;
+                      
+                      // Slight Sample Hold / Aliasing Simulation (Skipping samples would change length, so we just add noise)
+                      if (i % 2 !== 0) sample = data[i-1]; // Halve effective sample rate roughly
+                      
+                      data[i] = sample;
+                  }
+              }
+              resolve(newBuffer);
+          }, 100);
+      });
+  }
+
+  /** PRO 3: Vocal De-Esser
+   * Attenuates high frequency bursts (sibilance) intelligently.
+   */
+  public async applyDeEsser(buffer: AudioBuffer): Promise<AudioBuffer> {
+      return new Promise((resolve) => {
+          setTimeout(() => {
+              const newBuffer = this.cloneBuffer(buffer);
+              const channels = newBuffer.numberOfChannels;
+              const sampleRate = newBuffer.sampleRate;
+              
+              // Simple derivative-based high frequency detection
+              // High frequencies have steep slopes between samples
+              const threshold = 0.15; // Sibilance sensitivity
+              const reduction = 0.6; // Attenuation factor
+              
+              for(let c = 0; c < channels; c++) {
+                  const data = newBuffer.getChannelData(c);
+                  for(let i=1; i<data.length; i++) {
+                      const slope = Math.abs(data[i] - data[i-1]);
+                      
+                      // If slope is extremely steep, it's likely high freq noise/sibilance
+                      if (slope > threshold) {
+                          // Attenuate current sample smoothly
+                          data[i] *= reduction;
+                      }
+                  }
+              }
+              resolve(newBuffer);
+          }, 150);
+      });
+  }
+
   public async applyNoiseReduction(buffer: AudioBuffer): Promise<AudioBuffer> {
       return new Promise((resolve) => {
-          // Use setTimeout to push this task to the next event loop tick, allowing the UI to render the "Loading" screen
           setTimeout(() => {
               try {
                   const channels = buffer.numberOfChannels;
-                  const rate = buffer.sampleRate;
                   const length = buffer.length;
+                  const newBuffer = this.context.createBuffer(channels, length, buffer.sampleRate);
                   
-                  const newBuffer = this.context.createBuffer(channels, length, rate);
-                  
-                  // Threshold: -40dB approx
                   const threshold = 0.008; 
                   const attack = 0.002;
                   const release = 0.0005;
@@ -233,40 +577,30 @@ class AudioEngineService {
                   for (let c = 0; c < channels; c++) {
                       const inputData = buffer.getChannelData(c);
                       const outputData = newBuffer.getChannelData(c);
-                      
                       let envelope = 0;
 
                       for (let i = 0; i < length; i++) {
                           const inputSample = inputData[i];
-                          // Simple validation to prevent NaNs exploding the audio engine
-                          if (isNaN(inputSample)) {
-                              outputData[i] = 0;
-                              continue;
-                          }
+                          if (isNaN(inputSample)) { outputData[i] = 0; continue; }
 
                           const inputAbs = Math.abs(inputSample);
-
-                          if (inputAbs > envelope) {
-                              envelope += (inputAbs - envelope) * attack;
-                          } else {
-                              envelope += (inputAbs - envelope) * release;
-                          }
+                          if (inputAbs > envelope) envelope += (inputAbs - envelope) * attack;
+                          else envelope += (inputAbs - envelope) * release;
 
                           let gain = 1.0;
                           if (envelope < threshold) {
                               gain = Math.max(0, envelope / threshold);
                               gain = gain * gain * gain;
                           }
-
                           outputData[i] = inputSample * gain;
                       }
                   }
                   resolve(newBuffer);
               } catch (e) {
                   console.error("Error in Noise Reduction", e);
-                  resolve(buffer); // Fail safe: return original
+                  resolve(buffer); 
               }
-          }, 50); // Small delay to ensure React renders the modal
+          }, 50); 
       });
   }
 
