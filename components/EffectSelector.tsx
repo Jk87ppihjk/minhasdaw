@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Search, Sliders, Activity, Zap, Mic2, Waves, Speaker, Filter, X } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Search, Sliders, Activity, Zap, Mic2, Waves, Speaker, Filter, X, Smartphone } from 'lucide-react';
 import { EffectRegistry } from '../services/EffectRegistry';
 
 interface EffectSelectorProps {
@@ -7,7 +7,7 @@ interface EffectSelectorProps {
   onClose: () => void;
 }
 
-type Category = 'ALL' | 'DYNAMICS' | 'EQ & FILTER' | 'SPACE' | 'MODULATION' | 'CREATIVE' | 'PITCH';
+type Category = 'ALL' | 'MOBILE POCKET' | 'DYNAMICS' | 'EQ & FILTER' | 'SPACE' | 'MODULATION' | 'CREATIVE' | 'PITCH';
 
 interface EffectMeta {
   id: string;
@@ -19,6 +19,13 @@ interface EffectMeta {
 
 // Mapa de metadados para apresentação visual bonita
 const EFFECT_LIBRARY: EffectMeta[] = [
+  // Pocket Series (Mobile Optimized)
+  { id: 'pocketComp', name: 'Pocket Comp', category: 'MOBILE POCKET', description: 'One-knob vocal compressor.', icon: Sliders },
+  { id: 'pocketEQ', name: 'Pocket EQ', category: 'MOBILE POCKET', description: 'Simple 3-Band Equalizer.', icon: Activity },
+  { id: 'pocketDrive', name: 'Pocket Drive', category: 'MOBILE POCKET', description: 'Instant warmth and saturation.', icon: Zap },
+  { id: 'pocketSpace', name: 'Pocket Space', category: 'MOBILE POCKET', description: 'Easy vocal ambience reverb.', icon: Speaker },
+  { id: 'pocketGate', name: 'Pocket Gate', category: 'MOBILE POCKET', description: 'Remove background noise.', icon: Filter },
+
   // Plugins do Registro Dinâmico
   { id: 'filterDesert', name: 'Filter Desert', category: 'EQ & FILTER', description: 'XY Pad Filter with Resonance control.', icon: Filter },
   { id: 'tremoloDesert', name: 'Tremolo Desert', category: 'MODULATION', description: 'LFO based volume modulation.', icon: Waves },
@@ -35,6 +42,13 @@ const EFFECT_LIBRARY: EffectMeta[] = [
 export const EffectSelector: React.FC<EffectSelectorProps> = ({ onSelect, onClose }) => {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<Category>('ALL');
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setActiveCategory('MOBILE POCKET');
+  }, []);
 
   const filteredEffects = useMemo(() => {
     return EFFECT_LIBRARY.filter(fx => {
@@ -45,7 +59,7 @@ export const EffectSelector: React.FC<EffectSelectorProps> = ({ onSelect, onClos
     });
   }, [search, activeCategory]);
 
-  const categories: Category[] = ['ALL', 'DYNAMICS', 'EQ & FILTER', 'SPACE', 'MODULATION', 'CREATIVE', 'PITCH'];
+  const categories: Category[] = ['ALL', 'MOBILE POCKET', 'DYNAMICS', 'EQ & FILTER', 'SPACE', 'MODULATION', 'CREATIVE', 'PITCH'];
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -84,12 +98,13 @@ export const EffectSelector: React.FC<EffectSelectorProps> = ({ onSelect, onClos
                     <button
                         key={cat}
                         onClick={() => setActiveCategory(cat)}
-                        className={`px-3 py-1.5 rounded text-[10px] font-bold tracking-wider uppercase whitespace-nowrap transition-all border ${
+                        className={`px-3 py-1.5 rounded text-[10px] font-bold tracking-wider uppercase whitespace-nowrap transition-all border flex items-center gap-2 ${
                             activeCategory === cat 
                             ? 'bg-desert-500 text-black border-desert-500' 
                             : 'bg-[#111] text-zinc-500 border-zinc-800 hover:border-zinc-600 hover:text-zinc-300'
                         }`}
                     >
+                        {cat === 'MOBILE POCKET' && <Smartphone className="w-3 h-3" />}
                         {cat}
                     </button>
                 ))}
@@ -114,7 +129,7 @@ export const EffectSelector: React.FC<EffectSelectorProps> = ({ onSelect, onClos
                         </div>
                         
                         <h3 className="text-sm font-bold text-zinc-200 group-hover:text-white mb-1">{fx.name}</h3>
-                        <span className="text-[9px] font-bold text-desert-500/70 uppercase tracking-widest mb-2 border border-desert-500/20 px-1.5 rounded">{fx.category}</span>
+                        <span className={`text-[9px] font-bold uppercase tracking-widest mb-2 border px-1.5 rounded ${fx.category === 'MOBILE POCKET' ? 'text-[#e6c200] border-[#e6c200]/50 bg-[#e6c200]/10' : 'text-zinc-500 border-zinc-800'}`}>{fx.category}</span>
                         <p className="text-[11px] text-zinc-500 leading-snug group-hover:text-zinc-400">
                             {fx.description}
                         </p>

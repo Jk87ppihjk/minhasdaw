@@ -1,6 +1,7 @@
 import { EffectPlugin } from '../types';
 import { FilterDesertPlugin } from '../plugins/FilterDesertPlugin';
 import { TremoloDesertPlugin } from '../plugins/TremoloDesertPlugin';
+import { PocketCompPlugin, PocketEQPlugin, PocketDrivePlugin, PocketSpacePlugin, PocketGatePlugin } from '../plugins/MobileSuite';
 
 class EffectRegistryService {
   private plugins: Map<string, EffectPlugin> = new Map();
@@ -10,9 +11,16 @@ class EffectRegistryService {
   }
 
   private loadPlugins() {
-    // Registro manual dos plugins para garantir compatibilidade e evitar erros com import.meta.glob
+    // Standard Plugins
     this.register(FilterDesertPlugin);
     this.register(TremoloDesertPlugin);
+    
+    // Pocket Series (Mobile Optimized)
+    this.register(PocketCompPlugin);
+    this.register(PocketEQPlugin);
+    this.register(PocketDrivePlugin);
+    this.register(PocketSpacePlugin);
+    this.register(PocketGatePlugin);
   }
 
   register(plugin: EffectPlugin) {
