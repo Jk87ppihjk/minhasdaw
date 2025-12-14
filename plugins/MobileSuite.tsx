@@ -1,22 +1,115 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { EffectPlugin } from '../types';
-import { Knob } from '../components/Knob';
 import { audioEngine } from '../services/AudioEngine';
 
 // --- HELPER UI FOR MOBILE ---
 const MobileContainer: React.FC<{ children: React.ReactNode, title: string }> = ({ children, title }) => (
     <div className="flex flex-col w-full h-full bg-[#050505] border border-[#222]">
-        <div className="bg-[#111] border-b border-[#222] py-2 text-center">
+        <div className="bg-[#111] border-b border-[#222] py-2 text-center shrink-0">
             <span className="text-[#e6c200] font-black text-xs uppercase tracking-[0.2em]">{title}</span>
         </div>
-        <div className="flex-1 flex items-center justify-center p-4">
+        <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
             {children}
         </div>
     </div>
 );
 
+// --- MOBILE FADER COMPONENT (TOUCH FRIENDLY) ---
+interface MobileFaderProps {
+    value: number;
+    min: number;
+    max: number;
+    onChange: (val: number) => void;
+    label: string;
+    unit?: string;
+    color?: string;
+}
+
+const MobileFader: React.FC<MobileFaderProps> = ({ value, min, max, onChange, label, unit = "", color = "bg-[#e6c200]" }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const handleInteraction = (clientY: number) => {
+        if (!containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        const height = rect.height;
+        const bottom = rect.bottom;
+        
+        // Calculate relative Y from bottom (0 to 1)
+        let delta = (bottom - clientY) / height;
+        delta = Math.max(0, Math.min(1, delta));
+        
+        // Map to value
+        const newValue = min + (delta * (max - min));
+        onChange(newValue);
+    };
+
+    const onMouseDown = (e: React.MouseEvent) => {
+        handleInteraction(e.clientY);
+        const move = (ev: MouseEvent) => handleInteraction(ev.clientY);
+        const up = () => {
+            window.removeEventListener('mousemove', move);
+            window.removeEventListener('mouseup', up);
+        };
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+    };
+
+    const onTouchStart = (e: React.TouchEvent) => {
+        handleInteraction(e.touches[0].clientY);
+        // Prevent scroll while dragging fader
+        // e.preventDefault(); 
+    };
+
+    const onTouchMove = (e: React.TouchEvent) => {
+        handleInteraction(e.touches[0].clientY);
+    };
+
+    const percentage = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
+
+    return (
+        <div className="flex flex-col items-center h-full w-full max-w-[80px] gap-2 select-none touch-none">
+            {/* Value Display */}
+            <div className="text-[#e6c200] font-mono text-xs font-bold text-center h-4">
+                {Math.round(value)}{unit}
+            </div>
+
+            {/* Fader Track */}
+            <div 
+                ref={containerRef}
+                className="relative flex-1 w-12 md:w-14 bg-[#111] rounded-lg border border-[#333] overflow-hidden cursor-ns-resize shadow-inner group"
+                onMouseDown={onMouseDown}
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+            >
+                {/* Background Grid */}
+                <div className="absolute inset-0 opacity-20 flex flex-col justify-between py-2 pointer-events-none">
+                    {[...Array(10)].map((_, i) => (
+                        <div key={i} className="w-full h-[1px] bg-[#444]"></div>
+                    ))}
+                </div>
+
+                {/* Fill Bar */}
+                <div 
+                    className={`absolute bottom-0 left-0 right-0 ${color} transition-all duration-75 ease-out opacity-80 group-hover:opacity-100`}
+                    style={{ height: `${percentage}%` }}
+                />
+                
+                {/* Thumb / Handle Visual */}
+                <div 
+                    className="absolute left-0 right-0 h-[2px] bg-white shadow-[0_0_10px_white] pointer-events-none"
+                    style={{ bottom: `${percentage}%` }}
+                />
+            </div>
+
+            {/* Label */}
+            <span className="text-[10px] font-bold text-[#555] uppercase tracking-wider text-center">{label}</span>
+        </div>
+    );
+};
+
+
 // ============================================================================
-// 1. POCKET COMP (One Knob Compressor)
+// 1. POCKET COMP (One Fader Compressor)
 // ============================================================================
 interface PocketCompSettings { amount: number; active: boolean; }
 
@@ -28,7 +121,6 @@ const initComp = (ctx: AudioContext, s: PocketCompSettings) => {
     input.connect(comp);
     comp.connect(makeup);
     
-    // Default settings optimized for vocals
     comp.attack.value = 0.003;
     comp.release.value = 0.25;
     comp.knee.value = 10;
@@ -39,7 +131,6 @@ const initComp = (ctx: AudioContext, s: PocketCompSettings) => {
 
     updateComp(input, s, ctx);
 
-    // Override connect
     input.connect = (dest: any) => makeup.connect(dest);
     input.disconnect = () => makeup.disconnect();
     
@@ -58,11 +149,10 @@ const updateComp = (node: AudioNode, s: PocketCompSettings, ctx: AudioContext) =
         return;
     }
 
-    // "One Knob" Logic: Increases ratio and lowers threshold simultaneously
-    const t = s.amount / 100; // 0 to 1
-    const thresh = -50 * t; // 0 to -50dB
-    const ratio = 1 + (19 * t); // 1:1 to 20:1
-    const gain = 1 + (t * 2); // Makeup gain up to 3x (approx +10dB)
+    const t = s.amount / 100; 
+    const thresh = -50 * t; 
+    const ratio = 1 + (19 * t); 
+    const gain = 1 + (t * 2); 
 
     comp.threshold.setTargetAtTime(thresh, now, 0.1);
     comp.ratio.setTargetAtTime(ratio, now, 0.1);
@@ -71,17 +161,22 @@ const updateComp = (node: AudioNode, s: PocketCompSettings, ctx: AudioContext) =
 
 const PocketCompUI: React.FC<any> = ({ settings, onChange }) => (
     <MobileContainer title="POCKET COMP">
-        <div className="flex flex-col items-center gap-4">
-            <div className="scale-150 transform mb-2">
-                <Knob value={settings.amount} min={0} max={100} onChange={(v) => onChange({...settings, amount: v})} label="" />
+        <div className="flex flex-row items-stretch justify-center h-full w-full gap-6">
+            <div className="flex-1 max-w-[120px] h-full py-4">
+                <MobileFader 
+                    value={settings.amount} 
+                    min={0} 
+                    max={100} 
+                    onChange={(v) => onChange({...settings, amount: v})} 
+                    label="SQUASH"
+                    unit="%"
+                />
             </div>
-            <div className="text-center">
-                <div className="text-[#e6c200] font-bold text-2xl">{Math.round(settings.amount)}%</div>
-                <div className="text-[#555] text-[10px] uppercase font-bold tracking-wider mt-1">SQUASH AMOUNT</div>
+            <div className="flex flex-col justify-center items-center">
+                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-[#e6c200] text-black border-[#e6c200] shadow-[0_0_20px_rgba(230,194,0,0.3)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
+                    {settings.active ? "ACTIVE" : "BYPASS"}
+                </button>
             </div>
-            <button onClick={() => onChange({...settings, active: !settings.active})} className={`mt-2 px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest border ${settings.active ? 'bg-[#e6c200] text-black border-[#e6c200]' : 'bg-transparent text-[#555] border-[#333]'}`}>
-                {settings.active ? "ACTIVE" : "BYPASS"}
-            </button>
         </div>
     </MobileContainer>
 );
@@ -122,7 +217,6 @@ const updateEQ = (node: AudioNode, s: PocketEQSettings, ctx: AudioContext) => {
     const [low, mid, high] = (node as any)._nodes as BiquadFilterNode[];
     const now = ctx.currentTime;
     
-    // If active is false, flat EQ
     const lVal = s.active ? s.low : 0;
     const mVal = s.active ? s.mid : 0;
     const hVal = s.active ? s.high : 0;
@@ -132,26 +226,12 @@ const updateEQ = (node: AudioNode, s: PocketEQSettings, ctx: AudioContext) => {
     high.gain.setTargetAtTime(hVal, now, 0.1);
 };
 
-const SliderV: React.FC<{ val: number, min: number, max: number, label: string, onChange: (v: number) => void }> = ({ val, min, max, label, onChange }) => (
-    <div className="flex flex-col items-center h-full gap-2">
-        <input 
-            type="range" 
-            min={min} max={max} step={0.1} value={val} 
-            onChange={(e) => onChange(parseFloat(e.target.value))}
-            className="h-32 w-12 appearance-none bg-[#222] rounded-lg outline-none slider-vertical"
-            style={{ WebkitAppearance: 'slider-vertical' as any }}
-        />
-        <span className="text-[10px] font-bold text-[#666]">{label}</span>
-        <span className="text-[9px] font-mono text-[#e6c200]">{val > 0 ? '+' : ''}{Math.round(val)}</span>
-    </div>
-);
-
 const PocketEQUI: React.FC<any> = ({ settings, onChange }) => (
     <MobileContainer title="POCKET EQ">
-        <div className="flex justify-between w-full max-w-[300px] h-[200px]">
-            <SliderV val={settings.low} min={-12} max={12} label="LOW" onChange={(v) => onChange({...settings, low: v})} />
-            <SliderV val={settings.mid} min={-12} max={12} label="MID" onChange={(v) => onChange({...settings, mid: v})} />
-            <SliderV val={settings.high} min={-12} max={12} label="HIGH" onChange={(v) => onChange({...settings, high: v})} />
+        <div className="flex justify-around w-full h-full py-2 gap-2">
+            <MobileFader value={settings.low} min={-12} max={12} label="LOW" unit="dB" onChange={(v) => onChange({...settings, low: v})} />
+            <MobileFader value={settings.mid} min={-12} max={12} label="MID" unit="dB" onChange={(v) => onChange({...settings, mid: v})} />
+            <MobileFader value={settings.high} min={-12} max={12} label="HIGH" unit="dB" onChange={(v) => onChange({...settings, high: v})} />
         </div>
     </MobileContainer>
 );
@@ -180,7 +260,7 @@ const initDrive = (ctx: AudioContext, s: PocketDriveSettings) => {
     const input = ctx.createGain();
     const shaper = ctx.createWaveShaper();
     shaper.oversample = '4x';
-    const output = ctx.createGain(); // For compensation
+    const output = ctx.createGain(); 
 
     input.connect(shaper);
     shaper.connect(output);
@@ -205,7 +285,6 @@ const updateDrive = (node: AudioNode, s: PocketDriveSettings, ctx: AudioContext)
         output.gain.setTargetAtTime(1, now, 0.1);
     } else {
         shaper.curve = makeDistortionCurve(s.drive);
-        // Auto gain compensation approximation
         const compensation = 1 / (1 + (s.drive / 100)); 
         output.gain.setTargetAtTime(compensation, now, 0.1);
     }
@@ -213,20 +292,25 @@ const updateDrive = (node: AudioNode, s: PocketDriveSettings, ctx: AudioContext)
 
 const PocketDriveUI: React.FC<any> = ({ settings, onChange }) => (
     <MobileContainer title="POCKET DRIVE">
-        <div className="flex flex-col items-center gap-6">
-            <div className="relative">
-                <div className={`absolute inset-0 rounded-full blur-xl bg-orange-600 transition-opacity duration-300 ${settings.active && settings.drive > 0 ? 'opacity-40' : 'opacity-0'}`}></div>
-                <div className="scale-150 transform relative z-10">
-                    <Knob value={settings.drive} min={0} max={100} onChange={(v) => onChange({...settings, drive: v})} label="" />
-                </div>
+        <div className="flex flex-row items-stretch justify-center h-full w-full gap-6">
+            <div className="flex-1 max-w-[120px] h-full py-4 relative">
+                {/* Visual Glow */}
+                <div className={`absolute inset-0 bg-orange-600 blur-2xl transition-opacity duration-300 pointer-events-none ${settings.active ? 'opacity-20' : 'opacity-0'}`}></div>
+                
+                <MobileFader 
+                    value={settings.drive} 
+                    min={0} 
+                    max={100} 
+                    onChange={(v) => onChange({...settings, drive: v})} 
+                    label="DRIVE"
+                    color="bg-orange-500"
+                />
             </div>
-            <div className="text-center">
-                <div className="text-[#e6c200] font-bold text-2xl">{Math.round(settings.drive)}</div>
-                <div className="text-[#555] text-[10px] uppercase font-bold tracking-wider mt-1">SATURATION</div>
+            <div className="flex flex-col justify-center items-center">
+                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-orange-600 text-white border-orange-600 shadow-[0_0_20px_rgba(234,88,12,0.4)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
+                    {settings.active ? "HOT" : "COLD"}
+                </button>
             </div>
-            <button onClick={() => onChange({...settings, active: !settings.active})} className={`mt-2 px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest border ${settings.active ? 'bg-orange-600 text-white border-orange-600' : 'bg-transparent text-[#555] border-[#333]'}`}>
-                {settings.active ? "HOT" : "COLD"}
-            </button>
         </div>
     </MobileContainer>
 );
@@ -246,9 +330,8 @@ const initSpace = (ctx: AudioContext, s: PocketSpaceSettings) => {
     const wet = ctx.createGain();
     const output = ctx.createGain();
 
-    // Create simple impulse
     const rate = ctx.sampleRate;
-    const length = rate * 2.0; // 2 seconds fixed
+    const length = rate * 2.0; 
     const impulse = ctx.createBuffer(2, length, rate);
     const L = impulse.getChannelData(0);
     const R = impulse.getChannelData(1);
@@ -293,17 +376,23 @@ const updateSpace = (node: AudioNode, s: PocketSpaceSettings, ctx: AudioContext)
 
 const PocketSpaceUI: React.FC<any> = ({ settings, onChange }) => (
     <MobileContainer title="POCKET SPACE">
-        <div className="flex flex-col items-center gap-4">
-            <div className="scale-150 transform mb-2">
-                <Knob value={settings.mix} min={0} max={50} onChange={(v) => onChange({...settings, mix: v})} label="" />
+        <div className="flex flex-row items-stretch justify-center h-full w-full gap-6">
+            <div className="flex-1 max-w-[120px] h-full py-4">
+                <MobileFader 
+                    value={settings.mix} 
+                    min={0} 
+                    max={50} 
+                    onChange={(v) => onChange({...settings, mix: v})} 
+                    label="AMBIENCE"
+                    unit="%"
+                    color="bg-indigo-500"
+                />
             </div>
-            <div className="text-center">
-                <div className="text-[#e6c200] font-bold text-2xl">{Math.round(settings.mix)}%</div>
-                <div className="text-[#555] text-[10px] uppercase font-bold tracking-wider mt-1">AMBIENCE MIX</div>
+            <div className="flex flex-col justify-center items-center">
+                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-indigo-600 text-white border-indigo-600 shadow-[0_0_20px_rgba(79,70,229,0.4)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
+                    {settings.active ? "ON" : "OFF"}
+                </button>
             </div>
-            <button onClick={() => onChange({...settings, active: !settings.active})} className={`mt-2 px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest border ${settings.active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-transparent text-[#555] border-[#333]'}`}>
-                {settings.active ? "SPACE ON" : "DRY"}
-            </button>
         </div>
     </MobileContainer>
 );
@@ -319,7 +408,6 @@ interface PocketGateSettings { threshold: number; active: boolean; }
 const initGate = (ctx: AudioContext, s: PocketGateSettings) => {
     const input = ctx.createGain();
     const output = ctx.createGain();
-    // Simple implementation: Analyzer to check level, then automate gain
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
     input.connect(analyser);
@@ -343,12 +431,9 @@ const initGate = (ctx: AudioContext, s: PocketGateSettings) => {
         const outNode = (processor as any)._output as GainNode;
         
         if (currentSettings.active) {
-            // Hard knee gate
             if (db < currentSettings.threshold) {
-                // Close gate
                 outNode.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
             } else {
-                // Open gate
                 outNode.gain.setTargetAtTime(1, ctx.currentTime, 0.01);
             }
         } else {
@@ -373,18 +458,23 @@ const updateGate = (node: AudioNode, s: PocketGateSettings, ctx: AudioContext) =
 
 const PocketGateUI: React.FC<any> = ({ settings, onChange }) => (
     <MobileContainer title="POCKET GATE">
-        <div className="flex flex-col items-center gap-4">
-            <div className="scale-150 transform mb-2">
-                <Knob value={settings.threshold} min={-80} max={-10} onChange={(v) => onChange({...settings, threshold: v})} label="" />
+        <div className="flex flex-row items-stretch justify-center h-full w-full gap-6">
+            <div className="flex-1 max-w-[120px] h-full py-4">
+                <MobileFader 
+                    value={settings.threshold} 
+                    min={-80} 
+                    max={-10} 
+                    onChange={(v) => onChange({...settings, threshold: v})} 
+                    label="FLOOR"
+                    unit="dB"
+                    color="bg-emerald-500"
+                />
             </div>
-            <div className="text-center">
-                <div className="text-[#e6c200] font-bold text-2xl">{Math.round(settings.threshold)} dB</div>
-                <div className="text-[#555] text-[10px] uppercase font-bold tracking-wider mt-1">THRESHOLD</div>
+            <div className="flex flex-col justify-center items-center">
+                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-emerald-600 text-white border-emerald-600 shadow-[0_0_20px_rgba(5,150,105,0.4)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
+                    {settings.active ? "GATE ON" : "GATE OFF"}
+                </button>
             </div>
-            <p className="text-[9px] text-[#444] w-40 text-center">Sounds below this level will be silenced.</p>
-            <button onClick={() => onChange({...settings, active: !settings.active})} className={`mt-2 px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest border ${settings.active ? 'bg-green-600 text-white border-green-600' : 'bg-transparent text-[#555] border-[#333]'}`}>
-                {settings.active ? "GATE ON" : "GATE OFF"}
-            </button>
         </div>
     </MobileContainer>
 );
@@ -400,37 +490,32 @@ const initWide = (ctx: AudioContext, s: PocketWideSettings) => {
     const input = ctx.createGain();
     const output = ctx.createGain();
     
-    // M/S Processing Setup
     const splitter = ctx.createChannelSplitter(2);
     const merger = ctx.createChannelMerger(2);
     
-    // Nodes to create Mid and Side
-    const sumL = ctx.createGain(); // For Mid (L+R)
+    const sumL = ctx.createGain(); 
     const sumR = ctx.createGain();
-    const subL = ctx.createGain(); // For Side (L-R)
+    const subL = ctx.createGain(); 
     const subR = ctx.createGain();
     
-    // Side Gain Control (Width)
     const sideGain = ctx.createGain();
     
-    // Routing
     input.connect(splitter);
     
     // Mid = (L + R)
-    splitter.connect(sumL, 0); // L
-    splitter.connect(sumR, 1); // R
-    sumL.connect(merger, 0, 0); // Out Left
-    sumR.connect(merger, 0, 1); // Out Right
+    splitter.connect(sumL, 0); 
+    splitter.connect(sumR, 1); 
+    sumL.connect(merger, 0, 0); 
+    sumR.connect(merger, 0, 1); 
     
     // Side = (L - R)
-    splitter.connect(subL, 0); // L
-    splitter.connect(subR, 1); // R
-    subR.gain.value = -1; // Invert Right for subtraction
+    splitter.connect(subL, 0); 
+    splitter.connect(subR, 1); 
+    subR.gain.value = -1; 
     
     subL.connect(sideGain);
     subR.connect(sideGain);
     
-    // Recombine Side into L (pos) and R (neg)
     const sideToL = ctx.createGain();
     const sideToR = ctx.createGain();
     sideToR.gain.value = -1;
@@ -459,31 +544,8 @@ const updateWide = (node: AudioNode, s: PocketWideSettings, ctx: AudioContext) =
     const now = ctx.currentTime;
 
     if (!s.active) {
-        sideGain.gain.setTargetAtTime(0, now, 0.1); // No Side signal added = Normal Stereo (if Mid sums correctly)
+        sideGain.gain.setTargetAtTime(0, now, 0.1); 
     } else {
-        // Width 0..200%. 
-        // At 100% (1.0), we want normal stereo.
-        // At 0%, we want Mono.
-        // At 200%, we want exaggerated side.
-        
-        // This simple topology adds Side to Mid. 
-        // Correct M/S matrix:
-        // M = 0.5 * (L+R)
-        // S = 0.5 * (L-R)
-        // L' = M + S * width
-        // R' = M - S * width
-        
-        // My simple setup above approximates this. 
-        // 0.5 factor is implied by Unity gain in summing usually, but let's just control the side level directly.
-        // Width 0 = Mono (Side gain 0, wait, L-R removed? No, L+R is mono).
-        // My topology above sums L+R into L and R output channels directly. That creates mono if Side is 0?
-        // sumL(1) + sumR(1) -> Left Out. L+R.
-        // This creates a Mono Sum.
-        // Then we add Side (L-R).
-        // (L+R) + (L-R) = 2L. 
-        // (L+R) - (L-R) = 2R.
-        // So with Side Gain 1, we get original stereo (boosted by 6dB).
-        
         const w = s.width / 100;
         sideGain.gain.setTargetAtTime(w, now, 0.1);
     }
@@ -491,24 +553,26 @@ const updateWide = (node: AudioNode, s: PocketWideSettings, ctx: AudioContext) =
 
 const PocketWideUI: React.FC<any> = ({ settings, onChange }) => (
     <MobileContainer title="POCKET WIDE">
-        <div className="flex flex-col items-center gap-4">
-            <div className="scale-150 transform mb-2">
-                <Knob value={settings.width} min={0} max={200} onChange={(v) => onChange({...settings, width: v})} label="" />
+        <div className="flex flex-row items-stretch justify-center h-full w-full gap-6">
+            <div className="flex-1 max-w-[120px] h-full py-4">
+                <MobileFader 
+                    value={settings.width} 
+                    min={0} 
+                    max={200} 
+                    onChange={(v) => onChange({...settings, width: v})} 
+                    label="WIDTH"
+                    unit="%"
+                    color="bg-cyan-500"
+                />
             </div>
-            <div className="text-center">
-                <div className="text-[#e6c200] font-bold text-2xl">{Math.round(settings.width)}%</div>
-                <div className="text-[#555] text-[10px] uppercase font-bold tracking-wider mt-1">STEREO WIDTH</div>
+            <div className="flex flex-col justify-center items-center gap-2">
+                <div className="text-[10px] text-[#555] font-bold uppercase tracking-wider text-center">
+                    {settings.width < 50 ? "MONO" : (settings.width > 120 ? "HYPER" : "STEREO")}
+                </div>
+                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-cyan-600 text-white border-cyan-600 shadow-[0_0_20px_rgba(8,145,178,0.4)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
+                    {settings.active ? "ACTIVE" : "BYPASS"}
+                </button>
             </div>
-            <div className="flex gap-2 text-[9px] font-bold text-[#444] uppercase tracking-widest mt-2">
-                <span>Mono</span>
-                <span className="text-[#666]">|</span>
-                <span>Normal</span>
-                <span className="text-[#666]">|</span>
-                <span>Hyper</span>
-            </div>
-            <button onClick={() => onChange({...settings, active: !settings.active})} className={`mt-2 px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest border ${settings.active ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-transparent text-[#555] border-[#333]'}`}>
-                {settings.active ? "ACTIVE" : "BYPASS"}
-            </button>
         </div>
     </MobileContainer>
 );
@@ -521,7 +585,6 @@ export const PocketWidePlugin: EffectPlugin = { id: 'pocketWide', name: 'Pocket 
 // ============================================================================
 interface PocketTuneSettings { scale: string; speed: number; amount: number; active: boolean; }
 
-// Compact definitions for standalone plugin
 const SCALES_LIST = [
   "chromatic", "C Major", "C# Major", "D Major", "D# Major", "E Major", "F Major", "F# Major", 
   "G Major", "G# Major", "A Major", "A# Major", "B Major",
@@ -606,8 +669,7 @@ const initTune = (ctx: AudioContext, s: PocketTuneSettings) => {
             if (ratio > 2) ratio = 2; if (ratio < 0.5) ratio = 0.5;
             if (Math.abs(1.0 - ratio) > 0.02) targetPitchFactor = ratio; else targetPitchFactor = 1.0;
             
-            // Mix Amount Logic: Scale ratio back towards 1.0 based on amount
-            const amount = set.amount / 100; // 0 to 1
+            const amount = set.amount / 100; 
             targetPitchFactor = 1.0 + (targetPitchFactor - 1.0) * amount;
 
             (processor as any)._state = { note: targetNoteName, hz: Math.round(pitch), active: true };
@@ -616,7 +678,6 @@ const initTune = (ctx: AudioContext, s: PocketTuneSettings) => {
             (processor as any)._state = { note: '--', hz: 0, active: false };
         }
 
-        // Smoothing (Speed)
         const smoothing = Math.max(0.0001, set.speed * 0.1); 
         const grainLen = 1024;
 
@@ -651,63 +712,46 @@ const updateTune = (node: AudioNode, s: PocketTuneSettings, ctx: AudioContext) =
 };
 
 const PocketTuneUI: React.FC<any> = ({ settings, onChange, trackId }) => {
-    // Visualizer Hook
-    const [info, setInfo] = useState({ note: '--', hz: 0, active: false });
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-
-    useEffect(() => {
-        let raf: number;
-        // Need to find the node in the engine to get state. 
-        // This is a limitation of the decoupled UI/Audio. 
-        // For now, we simulate visualizer in UI or assume the AudioEngine exposes the node state (it doesn't directly).
-        // PRO TIP: In a real app, use a shared Ref or Store. 
-        // Here, we'll create a simple loop that "fakes" the visual update or tries to access the node via a global registry if possible.
-        // Since we can't easily access the internal processor state from here without a refactor, 
-        // we'll rely on the AudioEngine.getTunerState(trackId) which is already implemented for the legacy effect!
-        // HOWEVER, since this is a NEW plugin, the legacy getTunerState won't work unless we hook it up.
-        // Let's implement a simple visualizer based on settings for now, as real-time cross-thread UI is complex in this snippet.
-        
-        // Actually, let's use the AudioEngine.getTunerState logic but adapted.
-        // Since we can't easily get the processor state from here without modifying AudioEngine heavily,
-        // we will focus on the CONTROLS which are "Pro".
-        return () => {};
-    }, []);
-
     return (
         <MobileContainer title="POCKET TUNE">
-            <div className="flex flex-col gap-4 w-full px-2">
+            <div className="flex flex-col gap-4 w-full px-2 h-full">
                 
                 {/* Scale Selector */}
-                <div className="flex flex-col gap-1">
-                    <label className="text-[10px] text-[#666] font-bold uppercase">KEY SCALE</label>
+                <div className="flex flex-col gap-1 shrink-0">
+                    <label className="text-[9px] text-[#666] font-bold uppercase text-center">KEY SCALE</label>
                     <select 
                         value={settings.scale}
                         onChange={(e) => onChange({...settings, scale: e.target.value})}
-                        className="bg-[#111] text-[#e6c200] border border-[#333] rounded px-2 py-2 text-xs font-bold outline-none"
+                        className="bg-[#111] text-white border border-[#333] rounded px-2 py-3 text-xs font-bold outline-none text-center"
                     >
                         {SCALES_LIST.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                 </div>
 
-                <div className="flex flex-row justify-around gap-2">
-                    {/* Speed Knob */}
-                    <div className="flex flex-col items-center">
-                        <Knob value={settings.speed} min={0} max={0.5} onChange={(v) => onChange({...settings, speed: v})} label="" />
-                        <div className="text-[9px] text-[#e6c200] font-bold mt-1 text-center">
-                            {settings.speed < 0.05 ? "ROBOT" : (settings.speed > 0.3 ? "SLOW" : "FAST")}
-                        </div>
-                        <span className="text-[8px] text-[#555] font-bold">SPEED</span>
-                    </div>
+                <div className="flex-1 flex flex-row justify-around gap-4 py-2">
+                    {/* Speed Fader */}
+                    <MobileFader 
+                        value={settings.speed} 
+                        min={0} 
+                        max={0.5} 
+                        onChange={(v) => onChange({...settings, speed: v})} 
+                        label="SPEED"
+                        color="bg-purple-500"
+                    />
 
-                    {/* Amount Knob */}
-                    <div className="flex flex-col items-center">
-                        <Knob value={settings.amount} min={0} max={100} onChange={(v) => onChange({...settings, amount: v})} label="" />
-                        <div className="text-[9px] text-[#e6c200] font-bold mt-1">{Math.round(settings.amount)}%</div>
-                        <span className="text-[8px] text-[#555] font-bold">AMOUNT</span>
-                    </div>
+                    {/* Amount Fader */}
+                    <MobileFader 
+                        value={settings.amount} 
+                        min={0} 
+                        max={100} 
+                        onChange={(v) => onChange({...settings, amount: v})} 
+                        label="AMOUNT"
+                        unit="%"
+                        color="bg-purple-500"
+                    />
                 </div>
 
-                <button onClick={() => onChange({...settings, active: !settings.active})} className={`mt-2 py-3 rounded font-bold text-xs uppercase tracking-widest border w-full ${settings.active ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-purple-500' : 'bg-transparent text-[#555] border-[#333]'}`}>
+                <button onClick={() => onChange({...settings, active: !settings.active})} className={`shrink-0 py-3 rounded font-bold text-xs uppercase tracking-widest border w-full transition-all ${settings.active ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-purple-500 shadow-[0_0_20px_rgba(147,51,234,0.4)]' : 'bg-transparent text-[#555] border-[#333]'}`}>
                     {settings.active ? "CORRECTION ON" : "BYPASS"}
                 </button>
             </div>
