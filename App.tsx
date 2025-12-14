@@ -1617,7 +1617,7 @@ export default function App() {
                 </div>
                 
                 {selectedTrack ? (
-                    <div className="flex-1 p-6 flex flex-col gap-8 overflow-y-auto custom-scrollbar pb-20">
+                    <div className="flex-1 p-6 flex flex-col min-h-0 gap-8 overflow-y-auto custom-scrollbar pb-20">
                         <div className="text-center pb-6 border-b border-[var(--border-color)]">
                             <h2 className="text-2xl font-black text-[var(--text-main)] mb-1 truncate cursor-pointer hover:text-[var(--accent)] transition-colors tracking-tight" onClick={() => editTrackName(selectedTrack.id)}>{selectedTrack.name}</h2>
                             <span className="text-[10px] text-[var(--accent)] font-bold uppercase tracking-widest px-2 py-1 bg-[var(--accent)]/10 rounded border border-[var(--accent)]/20">{selectedTrack.type} TRACK</span>

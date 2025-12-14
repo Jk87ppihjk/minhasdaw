@@ -64,11 +64,11 @@ export const EffectSelector: React.FC<EffectSelectorProps> = ({ onSelect, onClos
   const categories: Category[] = ['ALL', 'MOBILE POCKET', 'DYNAMICS', 'EQ & FILTER', 'SPACE', 'MODULATION', 'CREATIVE', 'PITCH'];
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-[800px] max-h-[80vh] bg-[#0a0a0a] border border-zinc-800 rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+      <div className="w-full max-w-5xl h-[90vh] md:h-[80vh] bg-[#0a0a0a] border border-zinc-800 rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* Header */}
-        <div className="h-16 border-b border-zinc-800 flex items-center justify-between px-6 bg-[#050505] shrink-0">
+        <div className="h-16 border-b border-zinc-800 flex items-center justify-between px-4 md:px-6 bg-[#050505] shrink-0">
             <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-desert-500/10 rounded flex items-center justify-center border border-desert-500/20">
                     <Zap className="w-4 h-4 text-desert-500" />
@@ -81,7 +81,7 @@ export const EffectSelector: React.FC<EffectSelectorProps> = ({ onSelect, onClos
         </div>
 
         {/* Toolbar */}
-        <div className="p-6 border-b border-zinc-800 bg-[#080808] flex flex-col gap-4">
+        <div className="p-4 md:p-6 border-b border-zinc-800 bg-[#080808] flex flex-col gap-4 shrink-0">
             {/* Search */}
             <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
@@ -95,7 +95,7 @@ export const EffectSelector: React.FC<EffectSelectorProps> = ({ onSelect, onClos
             </div>
 
             {/* Categories */}
-            <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+            <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar touch-pan-x">
                 {categories.map(cat => (
                     <button
                         key={cat}
@@ -113,9 +113,9 @@ export const EffectSelector: React.FC<EffectSelectorProps> = ({ onSelect, onClos
             </div>
         </div>
 
-        {/* Grid */}
-        <div className="flex-1 overflow-y-auto p-6 bg-[#050505] custom-scrollbar">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        {/* Grid - IMPORTANT: min-h-0 is crucial for flex scrolling to work properly without overflow */}
+        <div className="flex-1 overflow-y-auto min-h-0 p-4 md:p-6 bg-[#050505] custom-scrollbar">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pb-10">
                 {filteredEffects.map(fx => (
                     <button
                         key={fx.id}
