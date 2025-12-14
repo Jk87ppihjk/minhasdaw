@@ -307,8 +307,18 @@ export default function App() {
                     const audioFile = audioFolder.file(clipData.fileName);
                     if (audioFile) {
                         const arrayBuffer = await audioFile.async("arraybuffer");
-                        const audioBuffer = await audioEngine.decodeAudioData(arrayBuffer);
-                        const blob = new Blob([arrayBuffer], { type: 'audio/wav' }); // Recreate blob
+                        
+                        if (arrayBuffer.byteLength === 0) {
+                            console.error(`Clip ${clipData.name} has 0 bytes. Skipping.`);
+                            continue;
+                        }
+
+                        // IMPORTANT: Create Blob first, because decodeAudioData consumes (transfers) the buffer
+                        const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
+                        
+                        // Clone the buffer for decoding to prevent ownership issues in some browsers
+                        const bufferToDecode = arrayBuffer.slice(0);
+                        const audioBuffer = await audioEngine.decodeAudioData(bufferToDecode);
                         
                         clips.push({
                             ...clipData,
@@ -327,7 +337,7 @@ export default function App() {
 
     } catch (err) {
         console.error("Failed to load project", err);
-        alert("Error loading project file.");
+        alert("Error loading project file: Unable to decode audio data.");
     }
   };
 
@@ -342,45 +352,51 @@ export default function App() {
   const handleImportBeat = async (e: React.ChangeEvent<HTMLInputElement>, trackIdToAdd?: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    audioEngine.resumeContext();
-    const arrayBuffer = await file.arrayBuffer();
-    const audioBuffer = await audioEngine.decodeAudioData(arrayBuffer);
-    const newClip: Clip = {
-        id: crypto.randomUUID(),
-        name: file.name.replace(/\.[^/.]+$/, ""),
-        blob: file, 
-        buffer: audioBuffer,
-        duration: audioBuffer.duration,
-        audioOffset: 0,
-        startTime: 0,
-    };
-    if (trackIdToAdd) {
-        setTracks(prev => prev.map(t => {
-            if (t.id === trackIdToAdd) {
-                const maxEnd = t.clips.reduce((max, c) => Math.max(max, c.startTime + c.duration), 0);
-                newClip.startTime = maxEnd > 0 ? maxEnd + 1 : 0;
-                return { ...t, clips: [...t.clips, newClip] }
-            }
-            return t;
-        }));
-    } else {
-        const newTrack: Track = {
-          id: crypto.randomUUID(),
-          name: file.name.replace(/\.[^/.]+$/, ""),
-          type: TrackType.BEAT,
-          volume: 0.8,
-          pan: 0,
-          muted: false,
-          solo: false,
-          clips: [newClip],
-          effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() },
-          activeEffects: []
+    try {
+        audioEngine.resumeContext();
+        const arrayBuffer = await file.arrayBuffer();
+        // Clone for decoding to keep file blob clean if needed elsewhere (though file is a Blob itself)
+        const audioBuffer = await audioEngine.decodeAudioData(arrayBuffer.slice(0));
+        const newClip: Clip = {
+            id: crypto.randomUUID(),
+            name: file.name.replace(/\.[^/.]+$/, ""),
+            blob: file, 
+            buffer: audioBuffer,
+            duration: audioBuffer.duration,
+            audioOffset: 0,
+            startTime: 0,
         };
-        setTracks(prev => [...prev, newTrack]);
-        setAudioState(prev => ({
-            ...prev, 
-            totalDuration: Math.max(prev.totalDuration, audioBuffer.duration + 10)
-        }));
+        if (trackIdToAdd) {
+            setTracks(prev => prev.map(t => {
+                if (t.id === trackIdToAdd) {
+                    const maxEnd = t.clips.reduce((max, c) => Math.max(max, c.startTime + c.duration), 0);
+                    newClip.startTime = maxEnd > 0 ? maxEnd + 1 : 0;
+                    return { ...t, clips: [...t.clips, newClip] }
+                }
+                return t;
+            }));
+        } else {
+            const newTrack: Track = {
+            id: crypto.randomUUID(),
+            name: file.name.replace(/\.[^/.]+$/, ""),
+            type: TrackType.BEAT,
+            volume: 0.8,
+            pan: 0,
+            muted: false,
+            solo: false,
+            clips: [newClip],
+            effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() },
+            activeEffects: []
+            };
+            setTracks(prev => [...prev, newTrack]);
+            setAudioState(prev => ({
+                ...prev, 
+                totalDuration: Math.max(prev.totalDuration, audioBuffer.duration + 10)
+            }));
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Failed to decode audio file.");
     }
   };
 

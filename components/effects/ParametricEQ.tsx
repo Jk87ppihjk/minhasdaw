@@ -140,14 +140,15 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
           ctx.stroke();
       });
 
-      // 3. Espectro (RTA) - Suavizado
+      // 3. Espectro (RTA) - Suavizado e Mais Visível
       if (analyser) {
         analyser.getByteFrequencyData(dataArray);
         ctx.beginPath();
         ctx.moveTo(0, h);
         
-        // Desenha com menos pontos para suavizar, interpolando
-        for (let x = 0; x < w; x += 2) {
+        // Desenha com resolução adaptativa
+        const step = Math.max(1, Math.floor(w / 300));
+        for (let x = 0; x < w; x += step) {
            const f = getFreqFromX(x, w);
            const idx = Math.min(bufferLength - 1, Math.floor((f / 22050) * bufferLength));
            const val = dataArray[idx] || 0;
@@ -155,14 +156,14 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
            ctx.lineTo(x, y);
         }
         ctx.lineTo(w, h);
-        ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.25)"; // Aumentado de 0.08
         ctx.fill();
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.5)"; // Aumentado de 0.15
         ctx.lineWidth = 1;
         ctx.stroke();
       }
 
-      // 4. Curva de EQ (Alta Resolução)
+      // 4. Curva de EQ (Alta Resolução & Física Real)
       const { bands } = stateRef.current.settings;
       
       const yZero = getYFromdB(0, h);
@@ -170,76 +171,83 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
       ctx.beginPath();
       ctx.moveTo(0, yZero);
       
-      // Renderiza pixel a pixel para eliminar triangulação
+      // Renderiza pixel a pixel para eliminar triangulação e usa math de Biquad real
       for (let x = 0; x < w; x++) {
            const f = getFreqFromX(x, w);
            let totalDb = 0;
            
            for (const b of bands) {
-              const fRatio = f / b.freq;
-              const logRatio = Math.log2(fRatio);
-
+              // Cálculos de Magnitude de Biquad Filter (Simulação Visual Precisa)
+              // https://webaudio.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html
+              
               if (b.type === 'peaking') {
-                  // Curva Gaussiana Logarítmica (Simula filtro Bell real)
-                  // Q alto = banda estreita.
-                  // A fórmula empírica para visualização:
+                  const fRatio = f / b.freq;
+                  const logRatio = Math.log2(fRatio);
                   const bandwidth = 1 / (b.q || 1); 
-                  // Usamos uma gaussiana modificada para simular o Bell Filter
                   const exponent = -Math.pow(logRatio / bandwidth, 2);
                   totalDb += b.gain * Math.exp(exponent);
               } 
               else if (b.type === 'lowpass') {
-                  // Slope de 12dB/octave suavizado
-                  if (f > b.freq) {
-                      // joelho suave
-                      totalDb -= 12 * logRatio; 
-                  }
+                  // Lowpass Magnitude Squared: |H(w)|^2 = 1 / ( (1 - (w/w0)^2)^2 + ( (w/w0)/Q )^2 )
+                  // w0 é a frequencia de corte. w é a frequencia atual.
+                  const ratio = f / b.freq; // w / w0
+                  const q = Math.max(0.1, b.q); // Q não pode ser 0
+                  const denominator = Math.pow(1 - ratio * ratio, 2) + Math.pow(ratio / q, 2);
+                  // dB = 10 * log10(Mag^2)
+                  totalDb += 10 * Math.log10(1 / denominator);
               }
               else if (b.type === 'highpass') {
-                  if (f < b.freq) {
-                      totalDb -= 12 * Math.log2(b.freq / f);
+                  // Highpass Magnitude Squared: |H(w)|^2 = (w/w0)^4 / ( (1 - (w/w0)^2)^2 + ( (w/w0)/Q )^2 )
+                  const ratio = f / b.freq;
+                  const q = Math.max(0.1, b.q);
+                  const numerator = Math.pow(ratio, 4);
+                  const denominator = Math.pow(1 - ratio * ratio, 2) + Math.pow(ratio / q, 2);
+                  if (numerator > 1e-20) { // Evita -infinity
+                      totalDb += 10 * Math.log10(numerator / denominator);
+                  } else {
+                      totalDb -= 200; // Corte profundo visual
                   }
               }
               else if (b.type === 'lowshelf') {
-                  // Sigmoid para Shelf
-                  // Transição suave em torno da freq
-                  // Aproximação usando atan
-                  const slope = Math.atan(-logRatio * 2) / (Math.PI / 2); // -1 a 1 invertido
-                  // Queremos gain total abaixo, 0 acima.
-                  // Em logRatio negativo (f < freq), slope é positivo -> gain.
-                  const factor = (slope + 1) / 2; // 0 a 1
+                  const fRatio = f / b.freq;
+                  const logRatio = Math.log2(fRatio);
+                  const slope = Math.atan(-logRatio * 2) / (Math.PI / 2); 
+                  const factor = (slope + 1) / 2;
                   totalDb += b.gain * factor;
               }
               else if (b.type === 'highshelf') {
+                  const fRatio = f / b.freq;
+                  const logRatio = Math.log2(fRatio);
                   const slope = Math.atan(logRatio * 2) / (Math.PI / 2);
                   const factor = (slope + 1) / 2;
                   totalDb += b.gain * factor;
               }
               else if (b.type === 'notch') {
+                   const fRatio = f / b.freq;
+                   const logRatio = Math.log2(fRatio);
                    const bandwidth = 0.5 / (b.q || 1);
                    const exponent = -Math.pow(logRatio / bandwidth, 2);
-                   // Notch remove tudo (-inf), visualmente limitamos a -24dB para o desenho
                    totalDb -= 48 * Math.exp(exponent);
               }
            }
            
-           // Clamp visual para não sair da tela absurdamente
-           if (totalDb > 30) totalDb = 30;
-           if (totalDb < -30) totalDb = -30;
+           // Clamp visual para não sair da tela absurdamente e quebrar o lineTo
+           if (totalDb > 40) totalDb = 40;
+           if (totalDb < -60) totalDb = -60;
 
            const y = getYFromdB(totalDb, h);
            ctx.lineTo(x, y);
       }
       
-      ctx.lineWidth = 2.5; // Linha um pouco mais grossa
+      ctx.lineWidth = 2.5; 
       ctx.strokeStyle = "#e6c200";
-      ctx.lineJoin = 'round'; // Juntas redondas para suavidade
+      ctx.lineJoin = 'round';
       ctx.shadowColor = "rgba(230, 194, 0, 0.5)";
       ctx.shadowBlur = 15;
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      // Preenchimento
+      // Preenchimento Suave Abaixo da Curva
       ctx.lineTo(w, h);
       ctx.lineTo(0, h);
       ctx.fillStyle = "rgba(230, 194, 0, 0.05)";
@@ -252,7 +260,7 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
          const isSelected = i === selectedBandIndex;
          const isHover = i === hoverBandIndex;
 
-         // Haste
+         // Haste (Dashed Line to 0dB)
          if (isSelected || isHover) {
              ctx.beginPath();
              ctx.moveTo(x, y);
@@ -281,7 +289,7 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
          ctx.fill();
          ctx.stroke();
          
-         // Número
+         // Número da Banda
          if (isSelected || isHover) {
             ctx.fillStyle = isSelected ? "#e6c200" : "#aaa";
             ctx.font = "bold 10px sans-serif";
@@ -325,9 +333,8 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
 
         // Hit Test (Prioriza bandas selecionadas ou próximas)
         let hitIdx = -1;
-        let minDist = 20; // Raio de clique em pixels
+        let minDist = 30; // Raio de clique aumentado para facilitar toque
         
-        // Check reverso para pegar as bandas "de cima" primeiro visualmente
         for (let i = bands.length - 1; i >= 0; i--) {
             const b = bands[i];
             const bx = getXFromFreq(b.freq, w);
@@ -336,7 +343,7 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
             if (dist < minDist) {
                 minDist = dist;
                 hitIdx = i;
-                break; // Encontrou, para
+                break;
             }
         }
 
@@ -345,14 +352,13 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
             stateRef.current.dragIndex = hitIdx;
             setSelectedBandIndex(hitIdx);
         } else {
-            // Clicou no vazio, deseleciona
             setSelectedBandIndex(-1);
         }
 
     } else if (type === 'move') {
         // Hover Logic
         let hitIdx = -1;
-        let minDist = 20;
+        let minDist = 30;
         for (let i = bands.length - 1; i >= 0; i--) {
             const b = bands[i];
             const bx = getXFromFreq(b.freq, w);
@@ -368,11 +374,6 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
             const freq = getFreqFromX(x, w);
             let gain = getdBFromY(y, h);
             
-            // Filtros de corte (Pass) e Notch tem ganho fixo ou irrelevante para a posição Y em alguns UX,
-            // mas aqui permitimos mover livremente, exceto se quisermos travar o Y.
-            // Opcional: Travar Y em 0 para LowPass/HighPass se desejar comportamento padrão
-            // if (bands[idx].type === 'lowpass' || bands[idx].type === 'highpass') gain = 0; 
-
             // Clamp Frequency
             const safeFreq = Math.max(20, Math.min(20000, freq));
             // Clamp Gain
@@ -383,7 +384,6 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
             
             onChange({ ...stateRef.current.settings, bands: newBands });
 
-            // Tooltip
             setTooltip({
                 x: x,
                 y: y,
@@ -471,8 +471,8 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
                                 <option value="peaking">Bell</option>
                                 <option value="lowshelf">Low Shelf</option>
                                 <option value="highshelf">High Shelf</option>
-                                <option value="lowpass">Low Cut</option>
-                                <option value="highpass">High Cut</option>
+                                <option value="lowpass">High Cut (Low Pass)</option>
+                                <option value="highpass">Low Cut (High Pass)</option>
                                 <option value="notch">Notch</option>
                             </select>
                         </div>
@@ -488,7 +488,7 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
                         {/* Q */}
                         <div className="flex flex-col gap-1 col-span-2">
                             <div className="flex justify-between">
-                                <label className="text-[9px] text-[#666] uppercase font-bold">Q (WIDTH)</label>
+                                <label className="text-[9px] text-[#666] uppercase font-bold">Q (RES)</label>
                                 <span className="text-[9px] text-[#888]">{selectedBand.q.toFixed(2)}</span>
                             </div>
                             <input 

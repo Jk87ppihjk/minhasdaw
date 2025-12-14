@@ -1010,7 +1010,15 @@ class AudioEngineService {
   }
 
   decodeAudioData = async (arrayBuffer: ArrayBuffer): Promise<AudioBuffer> => {
-    return await this.context.decodeAudioData(arrayBuffer);
+    try {
+        if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+            throw new Error("Received empty AudioBuffer for decoding.");
+        }
+        return await this.context.decodeAudioData(arrayBuffer);
+    } catch (error) {
+        console.error("AudioEngine: Error decoding audio data.", error);
+        throw error;
+    }
   }
 
   private generateReverbImpulse(duration: number, size: number): AudioBuffer {
