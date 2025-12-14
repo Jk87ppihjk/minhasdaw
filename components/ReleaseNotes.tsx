@@ -74,7 +74,7 @@ export const ReleaseNotes: React.FC = () => {
             <div>
                 <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
                     <Bug className="w-4 h-4 text-zinc-500" />
-                    10 Bugs Corrigidos
+                    15 Bugs Corrigidos
                 </h3>
                 <ul className="space-y-3">
                     {[
@@ -87,7 +87,12 @@ export const ReleaseNotes: React.FC = () => {
                         { title: "WAV Export Header", desc: "Resolvido problema de corrupção de cabeçalho em arquivos exportados (wav)." },
                         { title: "Ghost Clips", desc: "Corrigido bug onde clipes deletados continuavam tocando áudio residual." },
                         { title: "Safari Audio Context", desc: "Melhorada a inicialização do motor de áudio no iOS/Safari." },
-                        { title: "Loop Seam Click", desc: "Eliminado pequeno estalo (click) na transição do ponto de loop." }
+                        { title: "Loop Seam Click", desc: "Eliminado pequeno estalo (click) na transição do ponto de loop." },
+                        { title: "Undo State Sync", desc: "Corrigido problema onde o 'Desfazer' não restaurava parâmetros de efeitos." },
+                        { title: "Clip Drag Collision", desc: "Melhorada a detecção de colisão ao arrastar clipes rapidamente." },
+                        { title: "Mobile Menu Z-Index", desc: "Menu lateral não fica mais escondido atrás do visualizador de onda." },
+                        { title: "Buffer Underrun", desc: "Otimização do engine de áudio para evitar estalos em CPUs mais lentas." },
+                        { title: "Pitch Shift Aliasing", desc: "Qualidade de áudio melhorada ao alterar o tom de samples vocais." }
                     ].map((item, i) => (
                         <li key={i} className="flex items-start gap-3 p-3 rounded-lg bg-red-900/10 border border-red-900/20">
                             <div className="w-4 h-4 rounded-full bg-red-500/20 flex items-center justify-center shrink-0 mt-0.5">
