@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { X, CheckCircle2, Bug, Zap, Smartphone, ArrowRight } from 'lucide-react';
+import { X, CheckCircle2, Bug, Zap, Smartphone, ArrowRight, Grid, AlignJustify } from 'lucide-react';
 
-const CURRENT_VERSION = '0.0.0';
+const CURRENT_VERSION = '0.0.1';
 
 export const ReleaseNotes: React.FC = () => {
   const [isVisible, setIsVisible] = useState(false);
@@ -49,18 +49,16 @@ export const ReleaseNotes: React.FC = () => {
             <div className="mb-8">
                 <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
                     <Zap className="w-4 h-4 text-[#e6c200]" />
-                    5 Novas Melhorias
+                    Novas Funcionalidades
                 </h3>
                 <ul className="space-y-3">
                     {[
-                        { title: "Pocket Suite Mobile", desc: "7 novos efeitos otimizados exclusivamente para telas pequenas." },
-                        { title: "Pocket Tune Pro", desc: "Correção de tom avançada com seleção de escala e controle de velocidade." },
-                        { title: "Touch Faders", desc: "Substituição de knobs giratórios por faders verticais para melhor controle tátil." },
-                        { title: "Stereo Imaging", desc: "Novo plugin 'Pocket Wide' para alargamento estéreo Mid/Side." },
-                        { title: "Responsive Rack", desc: "O seletor de efeitos agora se adapta perfeitamente a qualquer resolução." }
+                        { title: "Smart Grid System", desc: "Nova régua com divisão por Compassos e Tempos (1, 1.2, 1.3...)." },
+                        { title: "Visual Matrix", desc: "Adição de linhas horizontais e verticais para melhor precisão no arranjo." },
+                        { title: "Precision Zoom", desc: "O grid se adapta automaticamente ao nível de zoom." }
                     ].map((item, i) => (
                         <li key={i} className="flex items-start gap-3 p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50">
-                            <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                            <Grid className="w-4 h-4 text-[#e6c200] mt-0.5 shrink-0" />
                             <div>
                                 <strong className="text-zinc-200 text-sm block">{item.title}</strong>
                                 <span className="text-zinc-500 text-xs">{item.desc}</span>
@@ -74,30 +72,15 @@ export const ReleaseNotes: React.FC = () => {
             <div>
                 <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
                     <Bug className="w-4 h-4 text-zinc-500" />
-                    15 Bugs Corrigidos
+                    Correções Críticas
                 </h3>
                 <ul className="space-y-3">
                     {[
-                        { title: "Effect List Cutoff", desc: "Corrigido problema onde a lista de efeitos cortava itens no mobile." },
-                        { title: "Touch Rotation", desc: "Resolvido conflito ao tentar girar knobs em telas touch." },
-                        { title: "Sidebar Scrolling", desc: "Adicionada rolagem correta para cadeias de efeitos longas." },
-                        { title: "Visualizer Crash", desc: "Otimização de memória nos visualizadores de áudio em tempo real." },
-                        { title: "Layout Overflow", desc: "Corrigida barra de rolagem horizontal indesejada na janela principal." },
-                        { title: "Metronome Drift", desc: "Corrigida dessincronização do metrônomo em tempos de reprodução longos." },
-                        { title: "WAV Export Header", desc: "Resolvido problema de corrupção de cabeçalho em arquivos exportados (wav)." },
-                        { title: "Ghost Clips", desc: "Corrigido bug onde clipes deletados continuavam tocando áudio residual." },
-                        { title: "Safari Audio Context", desc: "Melhorada a inicialização do motor de áudio no iOS/Safari." },
-                        { title: "Loop Seam Click", desc: "Eliminado pequeno estalo (click) na transição do ponto de loop." },
-                        { title: "Undo State Sync", desc: "Corrigido problema onde o 'Desfazer' não restaurava parâmetros de efeitos." },
-                        { title: "Clip Drag Collision", desc: "Melhorada a detecção de colisão ao arrastar clipes rapidamente." },
-                        { title: "Mobile Menu Z-Index", desc: "Menu lateral não fica mais escondido atrás do visualizador de onda." },
-                        { title: "Buffer Underrun", desc: "Otimização do engine de áudio para evitar estalos em CPUs mais lentas." },
-                        { title: "Pitch Shift Aliasing", desc: "Qualidade de áudio melhorada ao alterar o tom de samples vocais." }
+                        { title: "Track/Clip Misalignment", desc: "Corrigido erro visual grave onde as faixas laterais não alinhavam com os clipes na timeline." },
+                        { title: "Ruler Offset", desc: "Ajuste na compensação de altura da régua de tempo." }
                     ].map((item, i) => (
-                        <li key={i} className="flex items-start gap-3 p-3 rounded-lg bg-red-900/10 border border-red-900/20">
-                            <div className="w-4 h-4 rounded-full bg-red-500/20 flex items-center justify-center shrink-0 mt-0.5">
-                                <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
-                            </div>
+                        <li key={i} className="flex items-start gap-3 p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50">
+                            <AlignJustify className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
                             <div>
                                 <strong className="text-zinc-300 text-sm block">{item.title}</strong>
                                 <span className="text-zinc-600 text-xs">{item.desc}</span>

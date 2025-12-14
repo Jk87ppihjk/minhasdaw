@@ -1207,17 +1207,50 @@ export default function App() {
       const secondsPerBeat = 60 / audioState.bpm;
       const secondsPerBar = secondsPerBeat * 4; 
       const totalBars = Math.ceil(Math.max(120, audioState.totalDuration) / secondsPerBar);
-      const markers = []; const gridLines = [];
+      
+      const markers = []; 
+      const gridLines = [];
+      const trackHeight = 112; // 28 * 4 (h-28 class)
+
+      // Horizontal Lines (Tracks)
+      for(let t = 0; t < tracks.length; t++) {
+        gridLines.push(
+            <div 
+                key={`hgrid-${t}`} 
+                className="absolute left-0 right-0 border-b border-[var(--border-color)] opacity-20 pointer-events-none" 
+                style={{ top: (t + 1) * trackHeight, height: 1 }} 
+            />
+        );
+      }
+
       for(let i = 0; i < totalBars; i++) {
           const left = i * secondsPerBar * pixelsPerSecond;
-          markers.push(<div key={i} className="absolute top-0 bottom-0 border-l border-[var(--border-color)] text-[10px] text-[var(--text-muted)] pl-2 select-none flex items-center h-1/2 font-mono z-10" style={{ left }}>{i + 1}</div>);
-          gridLines.push(<div key={`grid-${i}`} className="absolute top-0 bottom-0 border-l border-[var(--border-color)] opacity-20 pointer-events-none" style={{ left, height: '100%' }} />);
+          
+          // Main Bar Line
+          markers.push(
+            <div key={i} className="absolute top-0 bottom-0 border-l border-[var(--border-color)] text-[10px] text-[var(--text-muted)] pl-1 select-none flex items-center h-1/2 font-mono z-10 font-bold" style={{ left }}>
+                {i + 1}
+            </div>
+          );
+          gridLines.push(
+            <div key={`grid-${i}`} className="absolute top-0 bottom-0 border-l border-[var(--border-color)] opacity-30 pointer-events-none" style={{ left }} />
+          );
+          
+          // Beats (1.2, 1.3, 1.4)
           for(let j=1; j<4; j++) {
-             gridLines.push(<div key={`grid-${i}-${j}`} className="absolute top-0 bottom-0 border-l border-[var(--border-color)] opacity-10 pointer-events-none" style={{ left: left + (j * secondsPerBeat * pixelsPerSecond), height: '100%' }} />);
+             const beatLeft = left + (j * secondsPerBeat * pixelsPerSecond);
+             markers.push(
+                <div key={`${i}-${j}`} className="absolute top-0 bottom-0 text-[8px] text-[var(--text-muted)] opacity-50 pl-1 select-none flex items-center h-1/2 font-mono z-10" style={{ left: beatLeft }}>
+                    {`${i + 1}.${j + 1}`}
+                </div>
+             );
+             gridLines.push(
+                <div key={`grid-${i}-${j}`} className="absolute top-0 bottom-0 border-l border-[var(--border-color)] opacity-10 pointer-events-none" style={{ left: beatLeft }} />
+             );
           }
       }
       return { Ruler: markers, GridLines: gridLines };
-  }, [audioState.bpm, audioState.totalDuration, pixelsPerSecond]);
+  }, [audioState.bpm, audioState.totalDuration, pixelsPerSecond, tracks.length]);
 
   const selectedTrack = tracks.find(t => t.id === selectedTrackId);
 
@@ -1450,6 +1483,12 @@ export default function App() {
 
              {/* Track Items */}
              <div className="flex-1 overflow-y-auto custom-scrollbar" style={{ transform: `translateY(-${scrollTop}px)` }}>
+                
+                {/* SPACER FOR RULER ALIGNMENT */}
+                <div className="h-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)] shrink-0 flex items-center justify-center">
+                    <div className="text-[8px] text-[var(--text-muted)] opacity-50 font-mono tracking-widest">TIMELINE SYNC</div>
+                </div>
+
                 {tracks.map(track => (
                     <div key={track.id} onClick={() => { setSelectedTrackId(track.id); if(isMobile) setIsTrackListOpen(false); }} className={`h-28 flex-shrink-0 px-3 py-3 flex flex-col justify-between border-b border-[var(--border-color)] cursor-pointer group transition-colors relative ${selectedTrackId === track.id ? 'bg-[var(--bg-element)] border-l-4 border-l-[var(--accent)]' : 'bg-[var(--bg-panel)] hover:bg-[var(--bg-element)] border-l-4 border-l-transparent'}`}>
                         <div className="flex items-center justify-between">
