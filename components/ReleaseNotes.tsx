@@ -74,7 +74,7 @@ export const ReleaseNotes: React.FC = () => {
             <div>
                 <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
                     <Bug className="w-4 h-4 text-zinc-500" />
-                    5 Bugs Corrigidos
+                    10 Bugs Corrigidos
                 </h3>
                 <ul className="space-y-3">
                     {[
@@ -82,7 +82,12 @@ export const ReleaseNotes: React.FC = () => {
                         { title: "Touch Rotation", desc: "Resolvido conflito ao tentar girar knobs em telas touch." },
                         { title: "Sidebar Scrolling", desc: "Adicionada rolagem correta para cadeias de efeitos longas." },
                         { title: "Visualizer Crash", desc: "Otimização de memória nos visualizadores de áudio em tempo real." },
-                        { title: "Layout Overflow", desc: "Corrigida barra de rolagem horizontal indesejada na janela principal." }
+                        { title: "Layout Overflow", desc: "Corrigida barra de rolagem horizontal indesejada na janela principal." },
+                        { title: "Metronome Drift", desc: "Corrigida dessincronização do metrônomo em tempos de reprodução longos." },
+                        { title: "WAV Export Header", desc: "Resolvido problema de corrupção de cabeçalho em arquivos exportados (wav)." },
+                        { title: "Ghost Clips", desc: "Corrigido bug onde clipes deletados continuavam tocando áudio residual." },
+                        { title: "Safari Audio Context", desc: "Melhorada a inicialização do motor de áudio no iOS/Safari." },
+                        { title: "Loop Seam Click", desc: "Eliminado pequeno estalo (click) na transição do ponto de loop." }
                     ].map((item, i) => (
                         <li key={i} className="flex items-start gap-3 p-3 rounded-lg bg-red-900/10 border border-red-900/20">
                             <div className="w-4 h-4 rounded-full bg-red-500/20 flex items-center justify-center shrink-0 mt-0.5">
