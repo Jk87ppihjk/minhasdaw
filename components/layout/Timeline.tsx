@@ -49,16 +49,22 @@ export const Timeline: React.FC<TimelineProps> = ({
   isCreatingLoop, loopStartAnchor, isDraggingLoopStart, isDraggingLoopEnd, isScrubbing, currentScrubTime, wasPlayingRef
 }) => {
 
-  // --- Zoom with Ctrl + Scroll ---
+  // --- Zoom with Ctrl + Scroll & Horizontal Scroll with Shift + Scroll ---
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
+        // Zoom: Ctrl + Scroll
         if (e.ctrlKey) {
             e.preventDefault();
             if (e.deltaY < 0) handleZoom('in');
             else handleZoom('out');
+        } 
+        // Horizontal Scroll: Shift + Scroll
+        else if (e.shiftKey) {
+            e.preventDefault();
+            container.scrollLeft += e.deltaY;
         }
     };
     container.addEventListener('wheel', handleWheel, { passive: false });
@@ -151,29 +157,16 @@ export const Timeline: React.FC<TimelineProps> = ({
                             const rect = e.currentTarget.getBoundingClientRect();
                             const x = e.clientX - rect.left;
                             const t = x / pixelsPerSecond;
-                            // Note: Logic here is passed up via App state, but simplified here for rendering.
-                            // The actual state update happens in App.tsx mouse handlers usually, but here we can emit events or use the passed setters.
-                            // However, App.tsx has the global mousemove/up listeners. We just initiate here.
-                            // Since we can't easily pass refs down to use inside App's useEffect without context,
-                            // we rely on App's logic. But wait, App's logic for scrubbing starts here.
-                            // We need to implement the start logic here.
                             
-                            // Re-implementing specific start logic to ensure it triggers:
                             if(e.shiftKey) { 
-                                // Loop Creation logic needs to be handled by parent or context. 
-                                // Since we can't easily modify the Ref in App from here without passing it, 
-                                // we'll use a hack or assume App handles this via props if we pass state setters.
-                                // For modularity, we are relying on props.
-                                // BUT: The App.tsx has `isCreatingLoopRef` etc. 
-                                // We will emit a custom event or just let App handle global mouse events?
-                                // No, the `onMouseDown` is right here.
-                                // We need to lift the state setting up.
-                                // The ref `isCreatingLoopRef` is in App.
-                                // We will modify App.tsx to pass a `handleRulerMouseDown` prop.
+                                // Logic for Loop Creation is passed down via props implicitly or handled in App
+                                // But since we modularized, we need to ensure functionality.
+                                // NOTE: The state update for loop creation was in App.tsx handlers.
+                                // We are only emitting UI events here usually.
                             } 
                         }}
-                        // Actually, let's keep the specific logic in the component but using callbacks prop
-                        // See App.tsx update for the implementation of `handleRulerInteraction`
+                        // Standard touch/mouse events for scrubbing are handled by the container in App.tsx
+                        // or by the specific elements.
                     >
                         {Ruler}
                         {audioState.loop.active && (
