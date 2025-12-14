@@ -14,6 +14,7 @@ import { ReverbEffect } from './components/effects/ReverbEffect';
 import { TunerEffect } from './components/effects/TunerEffect';
 import { DistortionEffect } from './components/effects/DistortionEffect'; 
 import { useUndoRedo } from './hooks/useUndoRedo';
+import { ReleaseNotes } from './components/ReleaseNotes';
 
 // --- Constants ---
 const BASE_PX_PER_SEC = 50;
@@ -1228,6 +1229,9 @@ export default function App() {
         onContextMenu={(e) => e.preventDefault()} 
     >
       
+      {/* RELEASE NOTES MODAL - Displays on startup if new version */}
+      <ReleaseNotes />
+
       {/* PROCESSING OVERLAY (LOADING SCREEN) */}
       {isProcessing && (
           <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center cursor-wait animate-in fade-in duration-300">
