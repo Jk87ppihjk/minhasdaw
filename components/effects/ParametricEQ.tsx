@@ -1,12 +1,14 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { FilterBand } from '../../types';
 import { audioEngine } from '../../services/AudioEngine';
+import { Headphones } from 'lucide-react';
 
 // Nova interface para suportar configurações globais além das bandas
 export interface EQSettings {
   bands: FilterBand[];
   reverb: number; // 0 a 100
   preamp: number; // -12 a +12 dB
+  auditionBandIndex?: number; // Índice da banda sendo ouvida isoladamente (Solo)
 }
 
 interface ParametricEQProps {
@@ -156,82 +158,95 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
            ctx.lineTo(x, y);
         }
         ctx.lineTo(w, h);
-        ctx.fillStyle = "rgba(255, 255, 255, 0.25)"; // Aumentado de 0.08
+        ctx.fillStyle = "rgba(255, 255, 255, 0.25)"; 
         ctx.fill();
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.5)"; // Aumentado de 0.15
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.5)"; 
         ctx.lineWidth = 1;
         ctx.stroke();
       }
 
       // 4. Curva de EQ (Alta Resolução & Física Real)
-      const { bands } = stateRef.current.settings;
+      const { bands, auditionBandIndex } = stateRef.current.settings;
       
       const yZero = getYFromdB(0, h);
       
       ctx.beginPath();
       ctx.moveTo(0, yZero);
       
-      // Renderiza pixel a pixel para eliminar triangulação e usa math de Biquad real
+      // Verifica se está em modo AUDITION
+      const isAuditioning = typeof auditionBandIndex === 'number' && auditionBandIndex !== -1 && bands[auditionBandIndex];
+
+      // Renderiza pixel a pixel
       for (let x = 0; x < w; x++) {
            const f = getFreqFromX(x, w);
            let totalDb = 0;
            
-           for (const b of bands) {
-              // Cálculos de Magnitude de Biquad Filter (Simulação Visual Precisa)
-              // https://webaudio.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html
-              
-              if (b.type === 'peaking') {
-                  const fRatio = f / b.freq;
-                  const logRatio = Math.log2(fRatio);
-                  const bandwidth = 1 / (b.q || 1); 
-                  const exponent = -Math.pow(logRatio / bandwidth, 2);
-                  totalDb += b.gain * Math.exp(exponent);
-              } 
-              else if (b.type === 'lowpass') {
-                  // Lowpass Magnitude Squared: |H(w)|^2 = 1 / ( (1 - (w/w0)^2)^2 + ( (w/w0)/Q )^2 )
-                  // w0 é a frequencia de corte. w é a frequencia atual.
-                  const ratio = f / b.freq; // w / w0
-                  const q = Math.max(0.1, b.q); // Q não pode ser 0
-                  const denominator = Math.pow(1 - ratio * ratio, 2) + Math.pow(ratio / q, 2);
-                  // dB = 10 * log10(Mag^2)
-                  totalDb += 10 * Math.log10(1 / denominator);
-              }
-              else if (b.type === 'highpass') {
-                  // Highpass Magnitude Squared: |H(w)|^2 = (w/w0)^4 / ( (1 - (w/w0)^2)^2 + ( (w/w0)/Q )^2 )
-                  const ratio = f / b.freq;
-                  const q = Math.max(0.1, b.q);
-                  const numerator = Math.pow(ratio, 4);
-                  const denominator = Math.pow(1 - ratio * ratio, 2) + Math.pow(ratio / q, 2);
-                  if (numerator > 1e-20) { // Evita -infinity
-                      totalDb += 10 * Math.log10(numerator / denominator);
-                  } else {
-                      totalDb -= 200; // Corte profundo visual
+           if (isAuditioning) {
+               // Renderiza APENAS a curva do filtro Bandpass
+               const b = bands[auditionBandIndex!];
+               // Bandpass Simples: Pico na Freq, Q define largura.
+               // Approx: BPF Magnitude
+               const fRatio = f / b.freq;
+               const logRatio = Math.log2(fRatio);
+               const bandwidth = 1 / (b.q || 1); 
+               // Usando uma curva Gaussiana simples para simular visualmente o bandpass
+               const exponent = -Math.pow(logRatio / bandwidth, 2);
+               // Normaliza para 0dB no topo (Audition geralmente não tem ganho)
+               totalDb = -3 * Math.abs(logRatio * b.q * 5); // Falloff visual
+               // Limita visualmente para parecer um bandpass
+               if (totalDb < -60) totalDb = -60;
+
+           } else {
+               // Renderiza Soma de Todas as Bandas
+               for (const b of bands) {
+                  if (b.type === 'peaking') {
+                      const fRatio = f / b.freq;
+                      const logRatio = Math.log2(fRatio);
+                      const bandwidth = 1 / (b.q || 1); 
+                      const exponent = -Math.pow(logRatio / bandwidth, 2);
+                      totalDb += b.gain * Math.exp(exponent);
+                  } 
+                  else if (b.type === 'lowpass') {
+                      const ratio = f / b.freq;
+                      const q = Math.max(0.1, b.q); 
+                      const denominator = Math.pow(1 - ratio * ratio, 2) + Math.pow(ratio / q, 2);
+                      totalDb += 10 * Math.log10(1 / denominator);
                   }
-              }
-              else if (b.type === 'lowshelf') {
-                  const fRatio = f / b.freq;
-                  const logRatio = Math.log2(fRatio);
-                  const slope = Math.atan(-logRatio * 2) / (Math.PI / 2); 
-                  const factor = (slope + 1) / 2;
-                  totalDb += b.gain * factor;
-              }
-              else if (b.type === 'highshelf') {
-                  const fRatio = f / b.freq;
-                  const logRatio = Math.log2(fRatio);
-                  const slope = Math.atan(logRatio * 2) / (Math.PI / 2);
-                  const factor = (slope + 1) / 2;
-                  totalDb += b.gain * factor;
-              }
-              else if (b.type === 'notch') {
-                   const fRatio = f / b.freq;
-                   const logRatio = Math.log2(fRatio);
-                   const bandwidth = 0.5 / (b.q || 1);
-                   const exponent = -Math.pow(logRatio / bandwidth, 2);
-                   totalDb -= 48 * Math.exp(exponent);
-              }
+                  else if (b.type === 'highpass') {
+                      const ratio = f / b.freq;
+                      const q = Math.max(0.1, b.q);
+                      const numerator = Math.pow(ratio, 4);
+                      const denominator = Math.pow(1 - ratio * ratio, 2) + Math.pow(ratio / q, 2);
+                      if (numerator > 1e-20) { 
+                          totalDb += 10 * Math.log10(numerator / denominator);
+                      } else {
+                          totalDb -= 200; 
+                      }
+                  }
+                  else if (b.type === 'lowshelf') {
+                      const fRatio = f / b.freq;
+                      const logRatio = Math.log2(fRatio);
+                      const slope = Math.atan(-logRatio * 2) / (Math.PI / 2); 
+                      const factor = (slope + 1) / 2;
+                      totalDb += b.gain * factor;
+                  }
+                  else if (b.type === 'highshelf') {
+                      const fRatio = f / b.freq;
+                      const logRatio = Math.log2(fRatio);
+                      const slope = Math.atan(logRatio * 2) / (Math.PI / 2);
+                      const factor = (slope + 1) / 2;
+                      totalDb += b.gain * factor;
+                  }
+                  else if (b.type === 'notch') {
+                       const fRatio = f / b.freq;
+                       const logRatio = Math.log2(fRatio);
+                       const bandwidth = 0.5 / (b.q || 1);
+                       const exponent = -Math.pow(logRatio / bandwidth, 2);
+                       totalDb -= 48 * Math.exp(exponent);
+                  }
+               }
            }
            
-           // Clamp visual para não sair da tela absurdamente e quebrar o lineTo
            if (totalDb > 40) totalDb = 40;
            if (totalDb < -60) totalDb = -60;
 
@@ -240,9 +255,9 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
       }
       
       ctx.lineWidth = 2.5; 
-      ctx.strokeStyle = "#e6c200";
+      ctx.strokeStyle = isAuditioning ? "#ffffff" : "#e6c200"; // Branco para modo Solo
       ctx.lineJoin = 'round';
-      ctx.shadowColor = "rgba(230, 194, 0, 0.5)";
+      ctx.shadowColor = isAuditioning ? "rgba(255, 255, 255, 0.5)" : "rgba(230, 194, 0, 0.5)";
       ctx.shadowBlur = 15;
       ctx.stroke();
       ctx.shadowBlur = 0;
@@ -250,59 +265,57 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
       // Preenchimento Suave Abaixo da Curva
       ctx.lineTo(w, h);
       ctx.lineTo(0, h);
-      ctx.fillStyle = "rgba(230, 194, 0, 0.05)";
+      ctx.fillStyle = isAuditioning ? "rgba(255, 255, 255, 0.05)" : "rgba(230, 194, 0, 0.05)";
       ctx.fill();
 
       // 5. Nós (Handles)
-      bands.forEach((b, i) => {
-         const x = getXFromFreq(b.freq, w);
-         const y = getYFromdB(b.gain, h);
-         const isSelected = i === selectedBandIndex;
-         const isHover = i === hoverBandIndex;
+      if (!isAuditioning) {
+        bands.forEach((b, i) => {
+           const x = getXFromFreq(b.freq, w);
+           const y = getYFromdB(b.gain, h);
+           const isSelected = i === selectedBandIndex;
+           const isHover = i === hoverBandIndex;
 
-         // Haste (Dashed Line to 0dB)
-         if (isSelected || isHover) {
-             ctx.beginPath();
-             ctx.moveTo(x, y);
-             ctx.lineTo(x, yZero);
-             ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
-             ctx.lineWidth = 1;
-             ctx.setLineDash([3, 3]);
-             ctx.stroke();
-             ctx.setLineDash([]);
-         }
+           if (isSelected || isHover) {
+               ctx.beginPath();
+               ctx.moveTo(x, y);
+               ctx.lineTo(x, yZero);
+               ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+               ctx.lineWidth = 1;
+               ctx.setLineDash([3, 3]);
+               ctx.stroke();
+               ctx.setLineDash([]);
+           }
 
-         // Círculo Externo (Glow)
-         if (isSelected) {
-             ctx.beginPath();
-             ctx.arc(x, y, 12, 0, Math.PI * 2);
-             ctx.fillStyle = "rgba(230, 194, 0, 0.2)";
-             ctx.fill();
-         }
+           if (isSelected) {
+               ctx.beginPath();
+               ctx.arc(x, y, 12, 0, Math.PI * 2);
+               ctx.fillStyle = "rgba(230, 194, 0, 0.2)";
+               ctx.fill();
+           }
 
-         // Círculo Principal
-         ctx.beginPath();
-         ctx.arc(x, y, isSelected ? 6 : 5, 0, Math.PI * 2);
-         ctx.fillStyle = isSelected ? "#e6c200" : (isHover ? "#fff" : "#888");
-         ctx.strokeStyle = "#000";
-         ctx.lineWidth = 2;
-         ctx.fill();
-         ctx.stroke();
-         
-         // Número da Banda
-         if (isSelected || isHover) {
-            ctx.fillStyle = isSelected ? "#e6c200" : "#aaa";
-            ctx.font = "bold 10px sans-serif";
-            ctx.fillText((i+1).toString(), x, y - 12);
-         }
-      });
+           ctx.beginPath();
+           ctx.arc(x, y, isSelected ? 6 : 5, 0, Math.PI * 2);
+           ctx.fillStyle = isSelected ? "#e6c200" : (isHover ? "#fff" : "#888");
+           ctx.strokeStyle = "#000";
+           ctx.lineWidth = 2;
+           ctx.fill();
+           ctx.stroke();
+           
+           if (isSelected || isHover) {
+              ctx.fillStyle = isSelected ? "#e6c200" : "#aaa";
+              ctx.font = "bold 10px sans-serif";
+              ctx.fillText((i+1).toString(), x, y - 12);
+           }
+        });
+      }
 
       frameId = requestAnimationFrame(render);
     };
 
     render();
     return () => cancelAnimationFrame(frameId);
-  }, [trackId, selectedBandIndex, hoverBandIndex]);
+  }, [trackId, selectedBandIndex, hoverBandIndex, settings.auditionBandIndex]);
 
   // --- Handlers de Interação ---
   const handleInteraction = (type: 'down' | 'move' | 'up', e: React.MouseEvent) => {
@@ -397,6 +410,15 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
     }
   };
 
+  const toggleAudition = (isActive: boolean) => {
+      if (selectedBandIndex === -1) return;
+      // Atualiza o índice de audição nas configurações
+      onChange({ 
+          ...settings, 
+          auditionBandIndex: isActive ? selectedBandIndex : -1 
+      });
+  };
+
   const selectedBand = selectedBandIndex !== -1 ? settings.bands[selectedBandIndex] : null;
 
   return (
@@ -485,11 +507,24 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
                              </div>
                         </div>
 
-                        {/* Q */}
+                        {/* Q with LISTEN Button */}
                         <div className="flex flex-col gap-1 col-span-2">
-                            <div className="flex justify-between">
-                                <label className="text-[9px] text-[#666] uppercase font-bold">Q (RES)</label>
-                                <span className="text-[9px] text-[#888]">{selectedBand.q.toFixed(2)}</span>
+                            <div className="flex justify-between items-end">
+                                <div className="flex flex-col">
+                                    <label className="text-[9px] text-[#666] uppercase font-bold">Q (RES)</label>
+                                    <span className="text-[9px] text-[#888]">{selectedBand.q.toFixed(2)}</span>
+                                </div>
+                                
+                                {/* LISTEN BUTTON */}
+                                <button
+                                    onMouseDown={() => toggleAudition(true)}
+                                    onMouseUp={() => toggleAudition(false)}
+                                    onMouseLeave={() => toggleAudition(false)}
+                                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border transition-colors select-none ${settings.auditionBandIndex === selectedBandIndex ? 'bg-[#e6c200] text-black border-[#e6c200] shadow-[0_0_10px_rgba(230,194,0,0.5)]' : 'bg-[#111] text-[#888] border-[#333] hover:border-[#666] hover:text-white'}`}
+                                >
+                                    <Headphones className="w-3 h-3" />
+                                    LISTEN
+                                </button>
                             </div>
                             <input 
                                 type="range" className="desert-slider" min="0.1" max="10" step="0.1"

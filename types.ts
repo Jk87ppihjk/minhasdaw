@@ -15,7 +15,7 @@ export interface FilterBand {
 // Interface antiga para compatibilidade
 export interface LegacyEffectSettings {
   autoPitch: { scale: string; speed: number; active: boolean; harmony: boolean; reverb: number; };
-  parametricEQ: { bands: FilterBand[]; active: boolean; preamp: number; reverb: number; };
+  parametricEQ: { bands: FilterBand[]; active: boolean; preamp: number; reverb: number; auditionBandIndex?: number; };
   compressor: { threshold: number; ratio: number; attack: number; release: number; knee: number; makeup: number; active: boolean };
   reverb: { time: number; mix: number; preDelay: number; tone: number; size: number; active: boolean };
   distortion: number;

@@ -396,34 +396,10 @@ class AudioEngineService {
                   const rStart = Math.max(0, r.start - paddingLen);
                   const rEnd = Math.min(rawData.length, r.end + paddingLen);
                   
-                  // Determine overlapping or close enough to merge
-                  // We merge if the gap between Current End and Next Start is less than Min Silence
-                  // Actually, strict logic: if gap < minSilence, we treat it as "keep".
-                  // Since we expanded both by padding, the "gap" is effectively reduced.
-                  // If rStart < currentEnd, they overlap -> Merge.
-                  // If rStart - currentEnd < (minSilenceLen), it means original gap was small enough -> Merge.
-                  
                   if (rStart <= currentEnd) {
                       // Overlap
                       currentEnd = Math.max(currentEnd, rEnd);
                   } else {
-                      // Gap exists. Check duration.
-                      // The effective gap in the *output* would be 0 if we stitched them.
-                      // But the criteria is: "silence > 2s cuts".
-                      // The space between Active Audio A (end) and Active Audio B (start).
-                      // We added padding. 
-                      // Let's re-evaluate logic: simple stitching of padded regions.
-                      
-                      // Check if the "silence" part between active regions (ignoring padding for decision) was < 2s?
-                      // The requirement is: "audio that has silence > 2s... cut".
-                      // So if gap > 2s, we separate. Else we keep.
-                      
-                      // Since we already added padding to 'currentEnd' and 'rStart', 
-                      // if they don't touch, it implies the original gap was > 2*padding (2s).
-                      // Actually, if padding is 1s, 2*padding = 2s.
-                      // So if regions don't overlap after padding, the gap was > 2s. 
-                      // Perfect logic! Just merging overlaps handles the requirement automatically.
-                      
                       mergedRegions.push({ start: currentStart, end: currentEnd });
                       currentStart = rStart;
                       currentEnd = rEnd;
@@ -758,16 +734,35 @@ class AudioEngineService {
             chain.tunerProcessor = processor;
         }
         else if (effectId === 'parametricEQ') {
-            track.effects.parametricEQ.bands.forEach((band, bIndex) => {
+            const auditionIdx = track.effects.parametricEQ.auditionBandIndex;
+            const bands = track.effects.parametricEQ.bands;
+
+            if (typeof auditionIdx === 'number' && auditionIdx !== -1 && bands[auditionIdx]) {
+                // AUDITION MODE (SOLO BAND)
+                // Substitui a cadeia completa por um único filtro Bandpass
+                const band = bands[auditionIdx];
                 const n = this.context.createBiquadFilter();
-                n.type = band.type;
+                n.type = 'bandpass';
                 n.frequency.value = band.freq;
-                n.gain.value = band.gain;
-                n.Q.value = band.q;
+                n.Q.value = band.q; // Usa o Q original para definir a largura da banda de audição
+                
                 currentInput.connect(n);
                 currentInput = n;
                 chain.parametricEQNodes.push(n);
-            });
+
+            } else {
+                // NORMAL MODE
+                track.effects.parametricEQ.bands.forEach((band, bIndex) => {
+                    const n = this.context.createBiquadFilter();
+                    n.type = band.type;
+                    n.frequency.value = band.freq;
+                    n.gain.value = band.gain;
+                    n.Q.value = band.q;
+                    currentInput.connect(n);
+                    currentInput = n;
+                    chain.parametricEQNodes.push(n);
+                });
+            }
         }
         else if (effectId === 'compressor' && track.effects.compressor.active) {
             const comp = this.context.createDynamicsCompressor();
@@ -932,16 +927,34 @@ class AudioEngineService {
                   if (wet) wet.gain.setTargetAtTime(d.mix, this.context.currentTime, 0.1);
               }
               else if (effectId === 'parametricEQ') {
-                  if (chain.parametricEQNodes.length === track.effects.parametricEQ.bands.length) {
-                      chain.parametricEQNodes.forEach((node, i) => {
-                          const band = track.effects.parametricEQ.bands[i];
-                          node.type = band.type;
-                          node.frequency.setTargetAtTime(band.freq, this.context.currentTime, 0.1);
-                          node.Q.setTargetAtTime(band.q, this.context.currentTime, 0.1);
-                          node.gain.setTargetAtTime(band.gain, this.context.currentTime, 0.1);
-                      });
-                  } else {
+                  // Detecta se a estrutura de nodos precisa mudar (Alternância entre Modo Normal e Solo)
+                  const auditionIdx = track.effects.parametricEQ.auditionBandIndex;
+                  const isSoloMode = typeof auditionIdx === 'number' && auditionIdx !== -1;
+                  const currentNodes = chain.parametricEQNodes.length;
+                  const expectedNodes = isSoloMode ? 1 : track.effects.parametricEQ.bands.length;
+                  
+                  if (currentNodes !== expectedNodes) {
+                      // Se o número de bandas mudou (add/remove) OU se o modo mudou, RECONSTRÓI
                       this.rebuildTrackEffects(track);
+                  } else {
+                      // Se a estrutura é compatível, apenas atualiza os parâmetros
+                      if (isSoloMode) {
+                          const node = chain.parametricEQNodes[0];
+                          const band = track.effects.parametricEQ.bands[auditionIdx!];
+                          if (node && band) {
+                             node.frequency.setTargetAtTime(band.freq, this.context.currentTime, 0.1);
+                             node.Q.setTargetAtTime(band.q, this.context.currentTime, 0.1);
+                             // Gain não é usado em Bandpass, mas ok
+                          }
+                      } else {
+                          chain.parametricEQNodes.forEach((node, i) => {
+                              const band = track.effects.parametricEQ.bands[i];
+                              node.type = band.type;
+                              node.frequency.setTargetAtTime(band.freq, this.context.currentTime, 0.1);
+                              node.Q.setTargetAtTime(band.q, this.context.currentTime, 0.1);
+                              node.gain.setTargetAtTime(band.gain, this.context.currentTime, 0.1);
+                          });
+                      }
                   }
               }
           }
