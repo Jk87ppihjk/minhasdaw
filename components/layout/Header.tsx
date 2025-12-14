@@ -1,0 +1,128 @@
+import React from 'react';
+import { Play, Pause, Square, Music, Settings2, Download, Save, Palette, Menu, PanelLeftClose, PanelRightClose, Undo2, Redo2, Maximize, Minimize, MoreVertical, FolderOpen } from 'lucide-react';
+import { AudioEngineState } from '../../types';
+
+interface HeaderProps {
+  audioState: AudioEngineState;
+  setAudioState: React.Dispatch<React.SetStateAction<AudioEngineState>>;
+  togglePlay: () => void;
+  handleStop: () => void;
+  toggleRecord: () => void;
+  formatTime: (seconds: number) => string;
+  
+  // Actions
+  undoTracks: () => void;
+  redoTracks: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  saveProject: () => void;
+  exportWav: () => void;
+  toggleTheme: () => void;
+  toggleFullScreen: () => void;
+  isFullScreen: boolean;
+  
+  // Sidebar Toggles
+  isTrackListOpen: boolean;
+  setIsTrackListOpen: (v: boolean) => void;
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: (v: boolean) => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({
+  audioState, setAudioState, togglePlay, handleStop, toggleRecord, formatTime,
+  undoTracks, redoTracks, canUndo, canRedo, saveProject, exportWav,
+  toggleTheme, toggleFullScreen, isFullScreen,
+  isTrackListOpen, setIsTrackListOpen, isSidebarOpen, setIsSidebarOpen
+}) => {
+  return (
+    <header className="h-16 border-b border-[var(--border-color)] flex items-center justify-between px-4 bg-[var(--bg-panel)] shrink-0 z-40 shadow-md relative">
+        {/* Left: Mobile Menu / Branding */}
+        <div className="flex items-center gap-3 w-auto md:w-1/4">
+          <button 
+             onClick={() => setIsTrackListOpen(!isTrackListOpen)} 
+             className="lg:hidden p-2 text-[var(--text-muted)] hover:text-[var(--text-main)]"
+          >
+             {isTrackListOpen ? <PanelLeftClose className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+          
+          <div className="w-8 h-8 bg-[var(--accent)] rounded flex items-center justify-center shadow-lg hidden md:flex">
+            <Music className="text-[var(--bg-main)] w-5 h-5 fill-current" />
+          </div>
+          <h1 className="font-bold text-lg tracking-tight hidden md:block text-[var(--text-main)] font-sans">MONOCHROME</h1>
+        </div>
+        
+        {/* Central Transport Capsule */}
+        <div className="flex flex-col items-center justify-center flex-1">
+            <div className="flex items-center gap-2 md:gap-6">
+                
+                {/* BPM */}
+                <div className="hidden md:flex items-center gap-2 bg-[var(--bg-element)] rounded-lg px-2 py-1 border border-[var(--border-color)]">
+                    <div className="flex flex-col items-center">
+                        <span className="text-[8px] font-bold text-[var(--text-muted)] tracking-wider">BPM</span>
+                        <input 
+                            type="number" 
+                            value={audioState.bpm} 
+                            onChange={(e) => setAudioState(p => ({ ...p, bpm: Math.max(40, Math.min(300, parseInt(e.target.value))) }))}
+                            className="w-10 bg-transparent text-[var(--accent)] font-mono text-center text-xs font-bold outline-none"
+                        />
+                    </div>
+                </div>
+
+                <div className="bg-[var(--bg-element)] rounded-full px-2 py-1.5 flex items-center gap-2 border border-[var(--border-color)] shadow-inner">
+                    <button onClick={handleStop} className="p-2 hover:bg-[var(--bg-main)] rounded-full text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors"><Square className="w-4 h-4 fill-current" /></button>
+                    <button onClick={() => togglePlay()} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${audioState.isPlaying ? 'bg-[var(--accent)] text-black shadow-lg' : 'bg-[var(--bg-panel)] text-[var(--text-main)] hover:bg-[var(--bg-main)] border border-[var(--border-color)]'}`}>
+                        {audioState.isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
+                    </button>
+                    <button onClick={toggleRecord} className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all ${audioState.isRecording ? 'bg-red-600 border-red-500 text-white animate-pulse' : 'bg-[var(--bg-element)] border-[var(--border-color)] text-red-500 hover:text-red-400'}`}>
+                        <div className={`w-3 h-3 rounded-full ${audioState.isRecording ? 'bg-white' : 'bg-current'}`}></div>
+                    </button>
+                </div>
+                
+                <div className="flex flex-col items-center justify-center h-10 w-24 md:w-28 bg-[var(--bg-main)] border border-[var(--border-color)] rounded text-center shadow-inner">
+                     <span className="font-mono text-lg md:text-xl text-[var(--accent)] leading-none mt-1">{formatTime(audioState.currentTime)}</span>
+                </div>
+            </div>
+        </div>
+
+        {/* Right: Tools / Mixer Toggle */}
+        <div className="flex items-center gap-3 justify-end w-auto md:w-1/4">
+            <div className="hidden md:flex items-center gap-2">
+                <button 
+                    onClick={() => canUndo && undoTracks()} 
+                    className={`p-2 rounded text-[var(--text-muted)] transition-colors ${canUndo ? 'hover:text-[var(--text-main)] hover:bg-[var(--bg-element)]' : 'opacity-30 cursor-default'}`}
+                    title="Undo (Ctrl+Z)"
+                >
+                    <Undo2 className="w-5 h-5" />
+                </button>
+                <button 
+                    onClick={() => canRedo && redoTracks()} 
+                    className={`p-2 rounded text-[var(--text-muted)] transition-colors ${canRedo ? 'hover:text-[var(--text-main)] hover:bg-[var(--bg-element)]' : 'opacity-30 cursor-default'}`}
+                    title="Redo (Ctrl+Y)"
+                >
+                    <Redo2 className="w-5 h-5" />
+                </button>
+                <div className="h-6 w-[1px] bg-[var(--border-color)] mx-1"></div>
+
+                <button onClick={toggleFullScreen} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">
+                    {isFullScreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+                </button>
+                <button onClick={toggleTheme} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Palette className="w-5 h-5" /></button>
+                <div className="h-6 w-[1px] bg-[var(--border-color)] mx-1"></div>
+                <button onClick={saveProject} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Save className="w-5 h-5" /></button>
+                <button onClick={exportWav} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Download className="w-5 h-5" /></button>
+            </div>
+            
+            <button className="md:hidden p-2 text-[var(--text-muted)]"><MoreVertical className="w-5 h-5" /></button>
+
+            <div className="h-6 w-[1px] bg-[var(--border-color)] mx-1 hidden md:block"></div>
+            
+            <button 
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+                className={`p-2 border border-[var(--border-color)] rounded ${isSidebarOpen ? 'bg-[var(--bg-element)] text-[var(--text-main)]' : 'text-[var(--text-muted)]'}`}
+            >
+                {isSidebarOpen ? <PanelRightClose className="w-4 h-4" /> : <Settings2 className="w-4 h-4" />}
+            </button>
+        </div>
+    </header>
+  );
+};

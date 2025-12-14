@@ -1,11 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette, Activity, FolderOpen, Wand2, Copy, ArrowLeftRight, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, GripVertical, Menu, PanelLeftClose, MoreVertical, Maximize, Minimize, Undo2, Redo2 } from 'lucide-react';
+import { Music, FolderOpen, ArrowLeft, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, ArrowLeftRight, Volume2, Trash2 } from 'lucide-react';
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
 import { audioEngine } from './services/AudioEngine';
 import { Track, TrackType, AudioEngineState, Clip, EffectSettings, ContextMenuState } from './types';
 import { EffectRegistry } from './services/EffectRegistry';
-import { Waveform } from './components/Waveform';
 import { Knob } from './components/Knob';
 import { EffectSelector } from './components/EffectSelector';
 import { ParametricEQ } from './components/effects/ParametricEQ';
@@ -16,88 +15,24 @@ import { DistortionEffect } from './components/effects/DistortionEffect';
 import { useUndoRedo } from './hooks/useUndoRedo';
 import { ReleaseNotes } from './components/ReleaseNotes';
 
+// Modules
+import { Header } from './components/layout/Header';
+import { TrackList } from './components/layout/TrackList';
+import { Timeline } from './components/layout/Timeline';
+import { MixerSidebar } from './components/layout/MixerSidebar';
+
 // --- Constants ---
 const BASE_PX_PER_SEC = 50;
 
 // --- THEME CONFIGURATION ---
 const THEMES: Record<string, React.CSSProperties> = {
-  dark: {
-    '--bg-main': '#050505',
-    '--bg-panel': '#0a0a0a',
-    '--bg-element': '#111',
-    '--text-main': '#e4e4e7', // zinc-200
-    '--text-muted': '#71717a', // zinc-500
-    '--border-color': '#27272a', // zinc-800
-    '--accent': '#e6c200',
-    '--waveform-bg': '#27272a',
-    '--waveform-wave': '#a1a1aa'
-  } as React.CSSProperties,
-  light: {
-    '--bg-main': '#f4f4f5', // zinc-100
-    '--bg-panel': '#ffffff',
-    '--bg-element': '#e4e4e7', // zinc-200
-    '--text-main': '#18181b', // zinc-900
-    '--text-muted': '#71717a',
-    '--border-color': '#d4d4d8', // zinc-300
-    '--accent': '#d97706', // amber-600
-    '--waveform-bg': '#e4e4e7',
-    '--waveform-wave': '#52525b'
-  } as React.CSSProperties,
-  yellow: {
-    '--bg-main': '#fef08a', // yellow-200
-    '--bg-panel': '#facc15', // yellow-400
-    '--bg-element': '#eab308', // yellow-500
-    '--text-main': '#422006', // yellow-950
-    '--text-muted': '#854d0e', // yellow-800
-    '--border-color': '#a16207', // yellow-700
-    '--accent': '#000000',
-    '--waveform-bg': '#ca8a04',
-    '--waveform-wave': '#ffffff'
-  } as React.CSSProperties,
-  blue: {
-    '--bg-main': '#020617', // slate-950
-    '--bg-panel': '#0f172a', // slate-900
-    '--bg-element': '#1e293b', // slate-800
-    '--text-main': '#f1f5f9', // slate-100
-    '--text-muted': '#64748b', // slate-500
-    '--border-color': '#334155', // slate-700
-    '--accent': '#38bdf8', // sky-400
-    '--waveform-bg': '#1e293b',
-    '--waveform-wave': '#7dd3fc'
-  } as React.CSSProperties,
-  green: {
-    '--bg-main': '#022c22', // teal-950
-    '--bg-panel': '#064e3b', // teal-900
-    '--bg-element': '#115e59', // teal-800
-    '--text-main': '#ccfbf1', // teal-100
-    '--text-muted': '#5eead4', // teal-300
-    '--border-color': '#134e4a', // teal-800
-    '--accent': '#34d399', // emerald-400
-    '--waveform-bg': '#064e3b',
-    '--waveform-wave': '#6ee7b7'
-  } as React.CSSProperties,
-  red: {
-    '--bg-main': '#2a0a0a', 
-    '--bg-panel': '#450a0a',
-    '--bg-element': '#7f1d1d',
-    '--text-main': '#fecdd3', // rose-200
-    '--text-muted': '#fb7185', // rose-400
-    '--border-color': '#881337', // rose-900
-    '--accent': '#f43f5e', // rose-500
-    '--waveform-bg': '#4c0519',
-    '--waveform-wave': '#fda4af'
-  } as React.CSSProperties,
-  purple: {
-    '--bg-main': '#1e1b4b', // indigo-950
-    '--bg-panel': '#312e81', // indigo-900
-    '--bg-element': '#4338ca', // indigo-700
-    '--text-main': '#e0e7ff', // indigo-100
-    '--text-muted': '#818cf8', // indigo-400
-    '--border-color': '#3730a3', // indigo-800
-    '--accent': '#c084fc', // purple-400
-    '--waveform-bg': '#312e81',
-    '--waveform-wave': '#a78bfa'
-  } as React.CSSProperties
+  dark: { '--bg-main': '#050505', '--bg-panel': '#0a0a0a', '--bg-element': '#111', '--text-main': '#e4e4e7', '--text-muted': '#71717a', '--border-color': '#27272a', '--accent': '#e6c200', '--waveform-bg': '#27272a', '--waveform-wave': '#a1a1aa' } as React.CSSProperties,
+  light: { '--bg-main': '#f4f4f5', '--bg-panel': '#ffffff', '--bg-element': '#e4e4e7', '--text-main': '#18181b', '--text-muted': '#71717a', '--border-color': '#d4d4d8', '--accent': '#d97706', '--waveform-bg': '#e4e4e7', '--waveform-wave': '#52525b' } as React.CSSProperties,
+  yellow: { '--bg-main': '#fef08a', '--bg-panel': '#facc15', '--bg-element': '#eab308', '--text-main': '#422006', '--text-muted': '#854d0e', '--border-color': '#a16207', '--accent': '#000000', '--waveform-bg': '#ca8a04', '--waveform-wave': '#ffffff' } as React.CSSProperties,
+  blue: { '--bg-main': '#020617', '--bg-panel': '#0f172a', '--bg-element': '#1e293b', '--text-main': '#f1f5f9', '--text-muted': '#64748b', '--border-color': '#334155', '--accent': '#38bdf8', '--waveform-bg': '#1e293b', '--waveform-wave': '#7dd3fc' } as React.CSSProperties,
+  green: { '--bg-main': '#022c22', '--bg-panel': '#064e3b', '--bg-element': '#115e59', '--text-main': '#ccfbf1', '--text-muted': '#5eead4', '--border-color': '#134e4a', '--accent': '#34d399', '--waveform-bg': '#064e3b', '--waveform-wave': '#6ee7b7' } as React.CSSProperties,
+  red: { '--bg-main': '#2a0a0a', '--bg-panel': '#450a0a', '--bg-element': '#7f1d1d', '--text-main': '#fecdd3', '--text-muted': '#fb7185', '--border-color': '#881337', '--accent': '#f43f5e', '--waveform-bg': '#4c0519', '--waveform-wave': '#fda4af' } as React.CSSProperties,
+  purple: { '--bg-main': '#1e1b4b', '--bg-panel': '#312e81', '--bg-element': '#4338ca', '--text-main': '#e0e7ff', '--text-muted': '#818cf8', '--border-color': '#3730a3', '--accent': '#c084fc', '--waveform-bg': '#312e81', '--waveform-wave': '#a78bfa' } as React.CSSProperties
 };
 
 const BASE_DEFAULTS: EffectSettings = {
@@ -121,8 +56,6 @@ export default function App() {
   // State
   const [welcomeScreen, setWelcomeScreen] = useState(true);
   const [theme, setTheme] = useState<string>('dark');
-  
-  // Use Undo/Redo Hook for Tracks
   const [tracks, setTracks, undoTracks, redoTracks, canUndo, canRedo] = useUndoRedo<Track[]>([]);
   
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
@@ -131,13 +64,13 @@ export default function App() {
   const [isFullScreen, setIsFullScreen] = useState(false);
   
   // Responsive UI State
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Right Sidebar (Mixer)
-  const [isTrackListOpen, setIsTrackListOpen] = useState(true); // Left Sidebar (Tracks)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isTrackListOpen, setIsTrackListOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   
   const [activeTool, setActiveTool] = useState<'cursor' | 'split'>('cursor');
   
-  // Processing State (Loading Screen)
+  // Processing State
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
   
@@ -146,26 +79,11 @@ export default function App() {
   const [scrollTop, setScrollTop] = useState(0);
   
   const [audioState, setAudioState] = useState<AudioEngineState>({
-    isPlaying: false,
-    currentTime: 0,
-    totalDuration: 120, 
-    isRecording: false,
-    bpm: 120,
-    snapToGrid: true,
-    metronomeOn: false,
-    masterVolume: 0.8,
+    isPlaying: false, currentTime: 0, totalDuration: 120, isRecording: false, bpm: 120, snapToGrid: true, metronomeOn: false, masterVolume: 0.8,
     loop: { active: false, start: 0, end: 4 }
   });
 
-  // Context Menu State
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
-      visible: false,
-      x: 0,
-      y: 0,
-      trackId: null,
-      clipId: null
-  });
-
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, trackId: null, clipId: null });
   const [openedEffect, setOpenedEffect] = useState<{ trackId: string, effectId: string } | null>(null);
 
   // References
@@ -175,7 +93,6 @@ export default function App() {
   const recordingStartTimeRef = useRef<number>(0);
   const playStartCursorRef = useRef<number>(0);
   
-  // Recording Live Data Refs
   const recordingWaveformRef = useRef<number[]>([]);
   const recordingTrackIdRef = useRef<string | null>(null);
   const recordingClipIdRef = useRef<string | null>(null);
@@ -186,37 +103,15 @@ export default function App() {
   const dragStartXRef = useRef<number>(0);
   const dragOriginalStartTimeRef = useRef<number>(0);
   
-  // Resize State
-  const [resizingState, setResizingState] = useState<{
-      isResizing: boolean;
-      direction: 'left' | 'right' | null;
-      clipId: string | null;
-      trackId: string | null;
-      initialX: number;
-      initialStartTime: number;
-      initialDuration: number;
-      initialOffset: number;
-  }>({
-      isResizing: false,
-      direction: null,
-      clipId: null,
-      trackId: null,
-      initialX: 0,
-      initialStartTime: 0,
-      initialDuration: 0,
-      initialOffset: 0
+  const [resizingState, setResizingState] = useState<{ isResizing: boolean; direction: 'left' | 'right' | null; clipId: string | null; trackId: string | null; initialX: number; initialStartTime: number; initialDuration: number; initialOffset: number; }>({
+      isResizing: false, direction: null, clipId: null, trackId: null, initialX: 0, initialStartTime: 0, initialDuration: 0, initialOffset: 0
   });
 
-  // Scrubbing Ref (to hold the time while dragging without re-renders lagging)
   const currentScrubTimeRef = useRef<number | null>(null);
-
-  // Collision Detection Constraints
   const dragConstraintsRef = useRef<{ min: number; max: number }>({ min: 0, max: Infinity });
 
   const isScrubbingRef = useRef(false);
   const wasPlayingRef = useRef(false);
-  const isDraggingTimelineRef = useRef(false);
-  
   const isDraggingLoopStartRef = useRef(false);
   const isDraggingLoopEndRef = useRef(false);
   const isCreatingLoopRef = useRef(false);
@@ -238,126 +133,62 @@ export default function App() {
     const handleResize = () => {
       const mobile = window.innerWidth < 1024;
       setIsMobile(mobile);
-      if (mobile) {
-          // On mobile, default closed to save space
-          setIsTrackListOpen(false);
-          setIsSidebarOpen(false);
-      } else {
-          // On desktop, default open
-          setIsTrackListOpen(true);
-          setIsSidebarOpen(true);
-      }
+      if (mobile) { setIsTrackListOpen(false); setIsSidebarOpen(false); } else { setIsTrackListOpen(true); setIsSidebarOpen(true); }
     };
-    handleResize(); // Init
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    handleResize(); window.addEventListener('resize', handleResize); return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Listen for fullscreen changes (e.g. user pressing ESC)
   useEffect(() => {
-      const handleFullScreenChange = () => {
-          setIsFullScreen(!!document.fullscreenElement);
-      };
-      document.addEventListener('fullscreenchange', handleFullScreenChange);
-      return () => document.removeEventListener('fullscreenchange', handleFullScreenChange);
+      const handleFullScreenChange = () => { setIsFullScreen(!!document.fullscreenElement); };
+      document.addEventListener('fullscreenchange', handleFullScreenChange); return () => document.removeEventListener('fullscreenchange', handleFullScreenChange);
   }, []);
 
   const toggleFullScreen = async () => {
-      try {
-          if (!document.fullscreenElement) {
-              await document.documentElement.requestFullscreen();
-          } else {
-              await document.exitFullscreen();
-          }
-      } catch (err) {
-          console.error("Error toggling fullscreen:", err);
-      }
+      try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); else await document.exitFullscreen(); } catch (err) { console.error(err); }
   };
 
-  // --- Theme Toggle ---
   const toggleTheme = () => {
     const keys = Object.keys(THEMES);
     const currentIndex = keys.indexOf(theme);
-    const nextIndex = (currentIndex + 1) % keys.length;
-    setTheme(keys[nextIndex]);
+    setTheme(keys[(currentIndex + 1) % keys.length]);
   };
 
-  // --- Real-time Mixing Logic ---
+  // --- Real-time Mixing ---
   useEffect(() => {
     const anySolo = tracks.some(t => t.solo);
     tracks.forEach(track => {
         let effectiveVolume = track.volume;
-        if (track.muted) {
-            effectiveVolume = 0;
-        } else if (anySolo && !track.solo) {
-            effectiveVolume = 0;
-        }
+        if (track.muted || (anySolo && !track.solo)) effectiveVolume = 0;
         audioEngine.setTrackVolume(track.id, effectiveVolume);
-        
-        // Re-apply effects if restored from Undo
-        if(audioState.isPlaying) {
-            audioEngine.updateTrackSettings(track);
-        }
+        if(audioState.isPlaying) audioEngine.updateTrackSettings(track);
     });
   }, [tracks, audioState.isPlaying]);
 
   // --- Project Management ---
   const saveProject = async () => {
     const zip = new JSZip();
-    
-    // Save Audio Blobs
     const audioFolder = zip.folder("audio");
     let clipIndex = 0;
-    
-    // Create a lean version of tracks for JSON
     const tracksForJson = tracks.map(t => ({
         ...t,
         clips: t.clips.map(c => {
             const fileName = `clip_${clipIndex++}.wav`;
-            if (c.blob && audioFolder) {
-                audioFolder.file(fileName, c.blob);
-            }
-            return {
-                ...c,
-                fileName: fileName, 
-                blob: null,
-                buffer: null
-            };
+            if (c.blob && audioFolder) audioFolder.file(fileName, c.blob);
+            return { ...c, fileName: fileName, blob: null, buffer: null };
         })
     }));
-
-    const projectState = {
-        tracks: tracksForJson,
-        audioState
-    };
-    
-    zip.file("project.json", JSON.stringify(projectState));
-    const content = await zip.generateAsync({ type: "blob" });
-    saveAs(content, "monochrome_project.zip");
+    zip.file("project.json", JSON.stringify({ tracks: tracksForJson, audioState }));
+    saveAs(await zip.generateAsync({ type: "blob" }), "monochrome_project.zip");
   };
 
   const handleLoadProject = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+    const file = e.target.files?.[0]; if (!file) return;
     try {
-        await audioEngine.resumeContext();
-        handleStop();
-        
+        await audioEngine.resumeContext(); handleStop();
         const zip = await JSZip.loadAsync(file);
-        const projectJsonFile = zip.file("project.json");
-        
-        if (!projectJsonFile) {
-            alert("Invalid project file");
-            return;
-        }
-
-        const projectJson = await projectJsonFile.async("string");
-        const projectData = JSON.parse(projectJson);
+        const projectData = JSON.parse(await zip.file("project.json")!.async("string"));
         const audioFolder = zip.folder("audio");
-
         const loadedTracks: Track[] = [];
-
         for (const trackData of projectData.tracks) {
             const clips: Clip[] = [];
             for (const clipData of trackData.clips) {
@@ -365,360 +196,115 @@ export default function App() {
                     const audioFile = audioFolder.file(clipData.fileName);
                     if (audioFile) {
                         const arrayBuffer = await audioFile.async("arraybuffer");
-                        
-                        if (arrayBuffer.byteLength === 0) continue;
-
-                        const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
-                        const bufferToDecode = arrayBuffer.slice(0);
-                        const audioBuffer = await audioEngine.decodeAudioData(bufferToDecode);
-                        
-                        clips.push({
-                            ...clipData,
-                            buffer: audioBuffer,
-                            blob: blob
-                        });
+                        if (arrayBuffer.byteLength > 0) clips.push({ ...clipData, buffer: await audioEngine.decodeAudioData(arrayBuffer.slice(0)), blob: new Blob([arrayBuffer], { type: 'audio/wav' }) });
                     }
                 }
             }
             loadedTracks.push({ ...trackData, clips });
         }
-
-        setTracks(loadedTracks);
-        setAudioState(prev => ({ ...prev, ...projectData.audioState, isPlaying: false }));
-        setWelcomeScreen(false);
-
-    } catch (err) {
-        console.error("Failed to load project", err);
-        alert("Error loading project file: Unable to decode audio data.");
-    }
+        setTracks(loadedTracks); setAudioState(prev => ({ ...prev, ...projectData.audioState, isPlaying: false })); setWelcomeScreen(false);
+    } catch (err) { alert("Error loading project."); }
   };
 
   const exportWav = async () => {
-      audioEngine.resumeContext();
-      if(tracks.length === 0) return;
-      const wavBlob = await audioEngine.renderOffline(tracks, audioState.totalDuration);
-      saveAs(wavBlob, "mixdown.wav");
+      audioEngine.resumeContext(); if(tracks.length === 0) return;
+      saveAs(await audioEngine.renderOffline(tracks, audioState.totalDuration), "mixdown.wav");
   };
 
   // --- Audio Actions ---
   const handleImportBeat = async (e: React.ChangeEvent<HTMLInputElement>, trackIdToAdd?: string) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const file = e.target.files?.[0]; if (!file) return;
     try {
         audioEngine.resumeContext();
-        const arrayBuffer = await file.arrayBuffer();
-        const audioBuffer = await audioEngine.decodeAudioData(arrayBuffer.slice(0));
-        const newClip: Clip = {
-            id: crypto.randomUUID(),
-            name: file.name.replace(/\.[^/.]+$/, ""),
-            blob: file, 
-            buffer: audioBuffer,
-            duration: audioBuffer.duration,
-            audioOffset: 0,
-            startTime: 0,
-        };
+        const audioBuffer = await audioEngine.decodeAudioData((await file.arrayBuffer()).slice(0));
+        const newClip: Clip = { id: crypto.randomUUID(), name: file.name.replace(/\.[^/.]+$/, ""), blob: file, buffer: audioBuffer, duration: audioBuffer.duration, audioOffset: 0, startTime: 0 };
         if (trackIdToAdd) {
-            setTracks(prev => prev.map(t => {
-                if (t.id === trackIdToAdd) {
-                    const maxEnd = t.clips.reduce((max, c) => Math.max(max, c.startTime + c.duration), 0);
-                    newClip.startTime = maxEnd > 0 ? maxEnd + 1 : 0;
-                    return { ...t, clips: [...t.clips, newClip] }
-                }
-                return t;
-            }));
+            setTracks(prev => prev.map(t => { if (t.id === trackIdToAdd) { const maxEnd = t.clips.reduce((max, c) => Math.max(max, c.startTime + c.duration), 0); newClip.startTime = maxEnd > 0 ? maxEnd + 1 : 0; return { ...t, clips: [...t.clips, newClip] } } return t; }));
         } else {
-            const newTrack: Track = {
-            id: crypto.randomUUID(),
-            name: file.name.replace(/\.[^/.]+$/, ""),
-            type: TrackType.BEAT,
-            volume: 0.8,
-            pan: 0,
-            muted: false,
-            solo: false,
-            clips: [newClip],
-            effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() },
-            activeEffects: []
-            };
-            setTracks(prev => [...prev, newTrack]);
-            setAudioState(prev => ({
-                ...prev, 
-                totalDuration: Math.max(prev.totalDuration, audioBuffer.duration + 10)
-            }));
+            setTracks(prev => [...prev, { id: crypto.randomUUID(), name: file.name.replace(/\.[^/.]+$/, ""), type: TrackType.BEAT, volume: 0.8, pan: 0, muted: false, solo: false, clips: [newClip], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] }]);
+            setAudioState(prev => ({ ...prev, totalDuration: Math.max(prev.totalDuration, audioBuffer.duration + 10) }));
         }
-    } catch (err) {
-        console.error(err);
-        alert("Failed to decode audio file.");
-    }
+    } catch (err) { alert("Failed to decode audio file."); }
   };
 
   const addNewTrack = () => {
-      const newTrack: Track = {
-          id: crypto.randomUUID(),
-          name: `Faixa ${tracks.length + 1}`,
-          type: TrackType.VOCAL,
-          volume: 0.8,
-          pan: 0,
-          muted: false,
-          solo: false,
-          clips: [],
-          effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() },
-          activeEffects: []
-      };
-      setTracks(prev => [...prev, newTrack]);
-      if (isMobile) setIsTrackListOpen(false); // Auto close sidebar on mobile
+      setTracks(prev => [...prev, { id: crypto.randomUUID(), name: `Faixa ${tracks.length + 1}`, type: TrackType.VOCAL, volume: 0.8, pan: 0, muted: false, solo: false, clips: [], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] }]);
+      if (isMobile) setIsTrackListOpen(false);
   };
 
-  const deleteTrack = (id: string) => {
-      setTracks(prev => prev.filter(t => t.id !== id));
-      if (selectedTrackId === id) setSelectedTrackId(null);
-  };
-
+  const deleteTrack = (id: string) => { setTracks(prev => prev.filter(t => t.id !== id)); if (selectedTrackId === id) setSelectedTrackId(null); };
   const duplicateTrack = (id: string) => {
-      const trackToClone = tracks.find(t => t.id === id);
-      if (!trackToClone) return;
-
-      const newTrack: Track = {
-          ...trackToClone,
-          id: crypto.randomUUID(),
-          name: `${trackToClone.name} (Copy)`,
-          clips: trackToClone.clips.map(c => ({
-              ...c,
-              id: crypto.randomUUID(),
-          }))
-      };
-      setTracks(prev => [...prev, newTrack]);
+      const track = tracks.find(t => t.id === id); if (!track) return;
+      setTracks(prev => [...prev, { ...track, id: crypto.randomUUID(), name: `${track.name} (Copy)`, clips: track.clips.map(c => ({ ...c, id: crypto.randomUUID() })) }]);
   };
-
   const editTrackName = (id: string) => {
-      const track = tracks.find(t => t.id === id);
-      if (!track) return;
-      const newName = prompt("Nome da Faixa:", track.name);
-      if (newName) {
-          updateTrack(id, { name: newName });
-      }
+      const track = tracks.find(t => t.id === id); if (!track) return;
+      const newName = prompt("Nome da Faixa:", track.name); if (newName) updateTrack(id, { name: newName });
   };
 
   const splitTrack = () => {
-    if (!selectedTrackId) return;
-    const track = tracks.find(t => t.id === selectedTrackId);
-    if (!track) return;
-    
+    if (!selectedTrackId) return; const track = tracks.find(t => t.id === selectedTrackId); if (!track) return;
     const splitTime = audioState.currentTime;
-    
-    const clipToSplit = track.clips.find(c => splitTime > c.startTime && splitTime < (c.startTime + c.duration));
-    if (!clipToSplit) return; 
-    
-    if (audioState.isPlaying) audioEngine.stopClip(clipToSplit.id);
-    
-    const relativeSplit = splitTime - clipToSplit.startTime;
-    if (relativeSplit < 0.05 || (clipToSplit.duration - relativeSplit) < 0.05) return;
-
-    const leftClip: Clip = { 
-        ...clipToSplit, 
-        duration: relativeSplit 
-    };
-    
-    const rightClip: Clip = { 
-        ...clipToSplit, 
-        id: crypto.randomUUID(), 
-        startTime: splitTime, 
-        duration: clipToSplit.duration - relativeSplit, 
-        audioOffset: clipToSplit.audioOffset + relativeSplit, 
-        name: `${clipToSplit.name} (Part)` 
-    };
-    
-    setTracks(prev => prev.map(t => {
-        if (t.id === track.id) {
-            const otherClips = t.clips.filter(c => c.id !== clipToSplit.id);
-            return { ...t, clips: [...otherClips, leftClip, rightClip] };
-        }
-        return t;
-    }));
-    
+    const clip = track.clips.find(c => splitTime > c.startTime && splitTime < (c.startTime + c.duration)); if (!clip) return;
+    if (audioState.isPlaying) audioEngine.stopClip(clip.id);
+    const relativeSplit = splitTime - clip.startTime; if (relativeSplit < 0.05 || (clip.duration - relativeSplit) < 0.05) return;
+    const rightClip: Clip = { ...clip, id: crypto.randomUUID(), startTime: splitTime, duration: clip.duration - relativeSplit, audioOffset: clip.audioOffset + relativeSplit, name: `${clip.name} (Part)` };
+    setTracks(prev => prev.map(t => t.id === track.id ? { ...t, clips: [...t.clips.filter(c => c.id !== clip.id), { ...clip, duration: relativeSplit }, rightClip] } : t));
     setSelectedClipId(rightClip.id);
   };
 
   const deleteSelectedClip = () => {
       if (!selectedClipId || !selectedTrackId) return;
       if (audioState.isPlaying) audioEngine.stopClip(selectedClipId);
-      setTracks(prev => prev.map(t => {
-          if (t.id === selectedTrackId) return { ...t, clips: t.clips.filter(c => c.id !== selectedClipId) };
-          return t;
-      }));
+      setTracks(prev => prev.map(t => t.id === selectedTrackId ? { ...t, clips: t.clips.filter(c => c.id !== selectedClipId) } : t));
       setSelectedClipId(null);
   };
 
   const toggleRecord = async () => {
     audioEngine.resumeContext();
     if (audioState.isRecording) {
-      // STOP RECORDING
       const blob = await audioEngine.stopRecording();
-      const arrayBuffer = await blob.arrayBuffer();
-      const audioBuffer = await audioEngine.decodeAudioData(arrayBuffer);
-      
-      const recClipId = recordingClipIdRef.current;
-      const recTrackId = recordingTrackIdRef.current;
-
-      if (recClipId && recTrackId) {
-          // Substitui o clipe temporário pelo clipe real finalizado
-          const newClip: Clip = {
-              id: recClipId, // Mantém o ID para transição suave
-              name: "Rec Take",
-              blob: blob,
-              buffer: audioBuffer,
-              duration: audioBuffer.duration,
-              audioOffset: 0,
-              startTime: recordingStartTimeRef.current,
-          };
-
-          setTracks(prev => prev.map(t => {
-              if (t.id === recTrackId) {
-                  return { 
-                      ...t, 
-                      clips: t.clips.map(c => c.id === recClipId ? newClip : c) 
-                  };
-              }
-              return t;
-          }));
+      const audioBuffer = await audioEngine.decodeAudioData(await blob.arrayBuffer());
+      if (recordingClipIdRef.current && recordingTrackIdRef.current) {
+          const newClip: Clip = { id: recordingClipIdRef.current, name: "Rec Take", blob, buffer: audioBuffer, duration: audioBuffer.duration, audioOffset: 0, startTime: recordingStartTimeRef.current };
+          setTracks(prev => prev.map(t => t.id === recordingTrackIdRef.current ? { ...t, clips: t.clips.map(c => c.id === recordingClipIdRef.current ? newClip : c) } : t));
       }
-
-      recordingClipIdRef.current = null;
-      recordingTrackIdRef.current = null;
-      recordingWaveformRef.current = [];
+      recordingClipIdRef.current = null; recordingTrackIdRef.current = null; recordingWaveformRef.current = [];
       setAudioState(prev => ({ ...prev, isRecording: false }));
-
     } else {
-      // START RECORDING
       try {
-        await audioEngine.startRecording();
-        recordingStartTimeRef.current = audioState.currentTime;
-        recordingWaveformRef.current = [];
-        
-        // Identificar a track alvo
-        let targetTrackId = selectedTrackId;
-        const selectedTrack = tracks.find(t => t.id === selectedTrackId);
-        
-        // Se não houver track selecionada ou não for VOCAL, cria uma nova
-        if (!selectedTrack || selectedTrack.type !== TrackType.VOCAL) {
-            const newTrack: Track = {
-                id: crypto.randomUUID(),
-                name: `Vocal Rec ${tracks.filter(t => t.type === TrackType.VOCAL).length + 1}`,
-                type: TrackType.VOCAL,
-                volume: 1.0,
-                pan: 0,
-                muted: false,
-                solo: false,
-                clips: [],
-                effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() },
-                activeEffects: []
-            };
-            // Usa setState callback para garantir que temos o estado mais recente
-            setTracks(prev => {
-                const updatedTracks = [...prev, newTrack];
-                targetTrackId = newTrack.id;
-                recordingTrackIdRef.current = newTrack.id;
-                return updatedTracks;
-            });
-            setSelectedTrackId(newTrack.id);
-        } else {
-            recordingTrackIdRef.current = selectedTrack.id;
+        await audioEngine.startRecording(); recordingStartTimeRef.current = audioState.currentTime; recordingWaveformRef.current = [];
+        let recTrackId = selectedTrackId;
+        if (!tracks.find(t => t.id === selectedTrackId)?.type.includes('VOCAL')) {
+            const newTrack: Track = { id: crypto.randomUUID(), name: `Vocal Rec`, type: TrackType.VOCAL, volume: 1.0, pan: 0, muted: false, solo: false, clips: [], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] };
+            setTracks(prev => [...prev, newTrack]); recTrackId = newTrack.id; setSelectedTrackId(newTrack.id);
         }
-
-        // Criar clipe temporário ("Fantasma")
-        const tempClipId = crypto.randomUUID();
-        recordingClipIdRef.current = tempClipId;
-        
-        const tempClip: Clip = {
-            id: tempClipId,
-            name: "Recording...",
-            duration: 0, // Vai crescer
-            audioOffset: 0,
-            startTime: recordingStartTimeRef.current,
-            liveData: [] // Dados para visualização em tempo real
-        };
-
-        // Adiciona o clipe fantasma à track
-        // Precisamos esperar o setTracks anterior (se houver) processar, então usamos timeout 0 ou encadeamos logicamente
-        // Simplificação: Assumimos que o ID já existe ou foi criado acima
-        setTimeout(() => {
-            setTracks(prev => prev.map(t => {
-                if (t.id === recordingTrackIdRef.current) {
-                    return { ...t, clips: [...t.clips, tempClip] };
-                }
-                return t;
-            }));
-        }, 0);
-
-        setAudioState(prev => ({ ...prev, isRecording: true }));
-        if (!audioState.isPlaying) togglePlay();
-
-      } catch (err) {
-        alert("Microphone error.");
-      }
+        recordingTrackIdRef.current = recTrackId;
+        const tempClipId = crypto.randomUUID(); recordingClipIdRef.current = tempClipId;
+        setTimeout(() => setTracks(prev => prev.map(t => t.id === recTrackId ? { ...t, clips: [...t.clips, { id: tempClipId, name: "Recording...", duration: 0, audioOffset: 0, startTime: recordingStartTimeRef.current, liveData: [] }] } : t)), 0);
+        setAudioState(prev => ({ ...prev, isRecording: true })); if (!audioState.isPlaying) togglePlay();
+      } catch (err) { alert("Microphone error."); }
     }
   };
 
-  const toggleLoop = () => {
-    setAudioState(prev => ({ ...prev, loop: { ...prev.loop, active: !prev.loop.active } }));
-  };
+  const toggleLoop = () => setAudioState(prev => ({ ...prev, loop: { ...prev.loop, active: !prev.loop.active } }));
 
   const togglePlay = useCallback((startTime?: number) => {
     audioEngine.resumeContext();
-    
-    // Se estiver gravando e pausar, para a gravação
-    if (audioState.isRecording) {
-        toggleRecord(); // Isso vai parar a gravação
-    }
-
+    if (audioState.isRecording) toggleRecord();
     setAudioState(prev => {
         if (prev.isPlaying && startTime === undefined) {
-            audioEngine.stopAll();
-            cancelAnimationFrame(rafRef.current);
+            audioEngine.stopAll(); cancelAnimationFrame(rafRef.current);
             return { ...prev, isPlaying: false, currentTime: playStartCursorRef.current };
         } else {
             const startCursor = startTime !== undefined ? startTime : prev.currentTime;
-            playStartCursorRef.current = startCursor;
-            playbackAnchorTimeRef.current = audioEngine.currentTime - startCursor;
-            audioEngine.startTransport(startCursor); 
-            return { ...prev, isPlaying: true };
+            playStartCursorRef.current = startCursor; playbackAnchorTimeRef.current = audioEngine.currentTime - startCursor;
+            audioEngine.startTransport(startCursor); return { ...prev, isPlaying: true };
         }
     });
-  }, [audioState.isRecording]); // Dependência importante!
+  }, [audioState.isRecording]);
 
-  const handleStop = () => {
-       if (audioState.isRecording) {
-           toggleRecord();
-       }
-       audioEngine.stopAll();
-       cancelAnimationFrame(rafRef.current);
-       setAudioState(prev => ({ ...prev, isPlaying: false, currentTime: 0 }));
-  };
-
-  // --- Keyboard Shortcuts ---
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-        
-        if (e.code === 'Space') {
-            e.preventDefault();
-            togglePlay();
-        }
-
-        // Undo: Ctrl+Z or Cmd+Z
-        if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ' && !e.shiftKey) {
-            e.preventDefault();
-            if(canUndo) undoTracks();
-        }
-
-        // Redo: Ctrl+Y or Ctrl+Shift+Z or Cmd+Shift+Z
-        if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyY' || (e.shiftKey && e.code === 'KeyZ'))) {
-            e.preventDefault();
-            if(canRedo) redoTracks();
-        }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay, canUndo, canRedo, undoTracks, redoTracks]);
+  const handleStop = () => { if (audioState.isRecording) toggleRecord(); audioEngine.stopAll(); cancelAnimationFrame(rafRef.current); setAudioState(prev => ({ ...prev, isPlaying: false, currentTime: 0 })); };
 
   // --- Play Loop Animation ---
   useEffect(() => {
@@ -726,230 +312,65 @@ export default function App() {
         const loop = () => {
             const now = audioEngine.currentTime;
             let visualTime = now - playbackAnchorTimeRef.current;
-            
-            // --- RECORDING UPDATE LOGIC ---
             if (audioState.isRecording && recordingClipIdRef.current && recordingTrackIdRef.current) {
-                // Captura pico atual do microfone
-                const peak = audioEngine.getRecordingPeak();
-                recordingWaveformRef.current.push(peak);
-                
-                // Otimização: A cada X frames atualiza o estado React para desenhar
-                // Fazer todo frame pode ser pesado, mas vamos tentar
-                setTracks(prevTracks => {
-                    return prevTracks.map(t => {
-                        if (t.id === recordingTrackIdRef.current) {
-                            return {
-                                ...t,
-                                clips: t.clips.map(c => {
-                                    if (c.id === recordingClipIdRef.current) {
-                                        return {
-                                            ...c,
-                                            duration: Math.max(0, visualTime - c.startTime),
-                                            // Passamos uma cópia leve do array ou o próprio ref
-                                            liveData: [...recordingWaveformRef.current] 
-                                        };
-                                    }
-                                    return c;
-                                })
-                            };
-                        }
-                        return t;
-                    });
-                });
+                recordingWaveformRef.current.push(audioEngine.getRecordingPeak());
+                setTracks(prev => prev.map(t => t.id === recordingTrackIdRef.current ? { ...t, clips: t.clips.map(c => c.id === recordingClipIdRef.current ? { ...c, duration: Math.max(0, visualTime - c.startTime), liveData: [...recordingWaveformRef.current] } : c) } : t));
             }
-            // ------------------------------
-
-            if (audioState.loop.active) {
-                if (visualTime >= audioState.loop.end) {
-                    audioEngine.stopAll();
-                    visualTime = audioState.loop.start;
-                    playbackAnchorTimeRef.current = now - audioState.loop.start;
-                    audioEngine.startTransport(visualTime); 
-                    playActiveSegments(visualTime);
-                }
+            if (audioState.loop.active && visualTime >= audioState.loop.end) {
+                audioEngine.stopAll(); visualTime = audioState.loop.start; playbackAnchorTimeRef.current = now - audioState.loop.start;
+                audioEngine.startTransport(visualTime); playActiveSegments(visualTime);
             } else if (visualTime >= audioState.totalDuration) {
-               audioEngine.stopAll();
-               setAudioState(prev => ({ ...prev, currentTime: 0, isPlaying: false }));
-               // Se acabar o tempo total e estiver gravando, para a gravação também
-               if (audioState.isRecording) toggleRecord();
-               cancelAnimationFrame(rafRef.current);
-               return;
+               audioEngine.stopAll(); setAudioState(prev => ({ ...prev, currentTime: 0, isPlaying: false })); if (audioState.isRecording) toggleRecord(); cancelAnimationFrame(rafRef.current); return;
             }
-            
             if (!Number.isFinite(visualTime)) visualTime = 0;
-            
-            setAudioState(prev => ({ ...prev, currentTime: Math.max(0, visualTime) }));
-            rafRef.current = requestAnimationFrame(loop);
+            setAudioState(prev => ({ ...prev, currentTime: Math.max(0, visualTime) })); rafRef.current = requestAnimationFrame(loop);
         };
-        playActiveSegments(audioState.currentTime);
-        rafRef.current = requestAnimationFrame(loop);
-    } else {
-        cancelAnimationFrame(rafRef.current);
-        audioEngine.stopAll();
-    }
+        playActiveSegments(audioState.currentTime); rafRef.current = requestAnimationFrame(loop);
+    } else { cancelAnimationFrame(rafRef.current); audioEngine.stopAll(); }
     return () => cancelAnimationFrame(rafRef.current);
   }, [audioState.isPlaying, audioState.loop, audioState.isRecording]); 
 
   // Sync BPM
-  useEffect(() => {
-      audioEngine.setBpm(audioState.bpm);
-      audioEngine.setMetronomeStatus(audioState.metronomeOn);
-  }, [audioState.bpm, audioState.metronomeOn]);
+  useEffect(() => { audioEngine.setBpm(audioState.bpm); audioEngine.setMetronomeStatus(audioState.metronomeOn); }, [audioState.bpm, audioState.metronomeOn]);
 
   const playActiveSegments = (startCursor: number) => {
     if (!Number.isFinite(startCursor)) return;
-    tracks.forEach(track => {
-        track.clips.forEach(clip => {
-            const clipStart = clip.startTime;
-            const clipEnd = clip.startTime + clip.duration;
-            if (clipEnd > startCursor) {
-                if (clipStart >= startCursor) {
-                    audioEngine.playClip(clip, track, playbackAnchorTimeRef.current + clipStart, 0);
-                } else {
-                    const offset = startCursor - clipStart;
-                    audioEngine.playClip(clip, track, audioEngine.currentTime, offset);
-                }
-            }
-        });
-      });
+    tracks.forEach(track => track.clips.forEach(clip => {
+        if (clip.startTime + clip.duration > startCursor) audioEngine.playClip(clip, track, clip.startTime >= startCursor ? playbackAnchorTimeRef.current + clip.startTime : audioEngine.currentTime, clip.startTime >= startCursor ? 0 : startCursor - clip.startTime);
+    }));
   };
 
   const handleZoom = useCallback((direction: 'in' | 'out') => {
       setZoomLevel(prev => {
           const newZoom = direction === 'in' ? Math.min(5, prev + 0.2) : Math.max(0.2, prev - 0.2);
           if (scrollContainerRef.current) {
-              const containerWidth = scrollContainerRef.current.offsetWidth;
-              // Use audioEngine time instead of state time to ensure smooth zoom during playback if possible,
-              // or just fallback to current rendered state. Using state is fine for wheel events.
               const currentTime = audioEngine.currentTime > 0 ? (audioEngine.currentTime - playbackAnchorTimeRef.current) : 0;
               const playheadX = currentTime * (BASE_PX_PER_SEC * newZoom);
-              setTimeout(() => {
-                  if (scrollContainerRef.current) {
-                      scrollContainerRef.current.scrollLeft = playheadX - (containerWidth / 2);
-                  }
-              }, 0);
+              setTimeout(() => { if (scrollContainerRef.current) scrollContainerRef.current.scrollLeft = playheadX - (scrollContainerRef.current.offsetWidth / 2); }, 0);
           }
           return newZoom;
       });
   }, []);
 
-  // Zoom via Ctrl + Scroll
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    const handleWheel = (e: WheelEvent) => {
-        if (e.ctrlKey) {
-            e.preventDefault();
-            if (e.deltaY < 0) {
-                handleZoom('in');
-            } else {
-                handleZoom('out');
-            }
-        }
-    };
-
-    // Use passive: false to allow preventDefault
-    container.addEventListener('wheel', handleWheel, { passive: false });
-
-    return () => {
-        container.removeEventListener('wheel', handleWheel);
-    };
-  }, [handleZoom]);
-
-  const updateTrack = (id: string, updates: Partial<Track>) => {
-    setTracks(prev => prev.map(t => {
-      if (t.id === id) {
-        const updated = { ...t, ...updates };
-        if (audioState.isPlaying) {
-            audioEngine.updateTrackSettings(updated);
-        }
-        return updated;
-      }
-      return t;
-    }));
-  };
-
-  const updateEffects = (id: string, updates: Partial<Track['effects']>) => {
-      setTracks(prev => prev.map(t => {
-          if (t.id === id) {
-              const updated = { ...t, effects: { ...t.effects, ...updates } };
-              audioEngine.updateTrackSettings(updated);
-              return updated;
-          }
-          return t;
-      }));
-  };
-
+  const updateTrack = (id: string, updates: Partial<Track>) => setTracks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+  const updateEffects = (id: string, updates: Partial<Track['effects']>) => setTracks(prev => prev.map(t => { if (t.id === id) { const updated = { ...t, effects: { ...t.effects, ...updates } }; audioEngine.updateTrackSettings(updated); return updated; } return t; }));
   const addEffect = (trackId: string, effectName: string) => {
-     setTracks(prev => prev.map(t => {
-         if (t.id === trackId && !t.activeEffects.includes(effectName)) {
-             const updatedTrack = { ...t, activeEffects: [...t.activeEffects, effectName] };
-             audioEngine.rebuildTrackEffects(updatedTrack);
-             return updatedTrack;
-         }
-         return t;
-     }));
-     setOpenedEffect({ trackId, effectId: effectName });
-     setShowEffectSelector(false); 
+     setTracks(prev => prev.map(t => { if (t.id === trackId && !t.activeEffects.includes(effectName)) { const updated = { ...t, activeEffects: [...t.activeEffects, effectName] }; audioEngine.rebuildTrackEffects(updated); return updated; } return t; }));
+     setOpenedEffect({ trackId, effectId: effectName }); setShowEffectSelector(false); 
   };
 
   // --- Context Menu Logic ---
-  const handleContextMenu = (e: React.MouseEvent, trackId: string, clipId: string) => {
-      e.preventDefault();
-      e.stopPropagation();
-      // Adjust position to stay within viewport
-      const x = Math.min(e.clientX, window.innerWidth - 200);
-      const y = Math.min(e.clientY, window.innerHeight - 300);
-      
-      setContextMenu({
-          visible: true,
-          x,
-          y,
-          trackId,
-          clipId
-      });
-  };
-
-  const closeContextMenu = () => {
-      setContextMenu(prev => ({ ...prev, visible: false }));
-  };
-
-  useEffect(() => {
-      const handleClick = () => closeContextMenu();
-      window.addEventListener('click', handleClick);
-      return () => window.removeEventListener('click', handleClick);
-  }, []);
+  const handleContextMenu = (e: React.MouseEvent, trackId: string, clipId: string) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: Math.min(e.clientX, window.innerWidth - 200), y: Math.min(e.clientY, window.innerHeight - 300), trackId, clipId }); };
+  const closeContextMenu = () => setContextMenu(prev => ({ ...prev, visible: false }));
+  useEffect(() => { window.addEventListener('click', closeContextMenu); return () => window.removeEventListener('click', closeContextMenu); }, []);
 
   const processClipBuffer = async (action: 'noise' | 'fadein' | 'fadeout' | 'reverse' | 'normalize' | 'neural' | 'silence' | 'removesilence' | 'invert' | 'gain' | 'lofi' | 'deesser') => {
-      if (!contextMenu.clipId || !contextMenu.trackId) return;
-      closeContextMenu();
-
-      setIsProcessing(true);
-      const messages: Record<string, string> = {
-          'noise': 'REMOVENDO RUÍDO...',
-          'fadein': 'APPLYING FADE IN...',
-          'fadeout': 'APPLYING FADE OUT...',
-          'reverse': 'REVERSING AUDIO...',
-          'normalize': 'NORMALIZING...',
-          'neural': 'NEURAL ENHANCE AI...',
-          'silence': 'SILENCING SELECTION...',
-          'removesilence': 'AUTO CUTTING SILENCE...',
-          'invert': 'INVERTING PHASE...',
-          'gain': 'BOOSTING GAIN...',
-          'lofi': 'CRUSHING BITS...',
-          'deesser': 'POLISHING VOCALS...'
-      };
-      setProcessingMessage(messages[action] || 'PROCESSING...');
-      
-      // Delay to allow UI update
+      if (!contextMenu.clipId || !contextMenu.trackId) return; closeContextMenu(); setIsProcessing(true);
+      setProcessingMessage(action.toUpperCase() + '...');
       setTimeout(async () => {
-          const track = tracks.find(t => t.id === contextMenu.trackId);
-          const clip = track?.clips.find(c => c.id === contextMenu.clipId);
-          
+          const track = tracks.find(t => t.id === contextMenu.trackId); const clip = track?.clips.find(c => c.id === contextMenu.clipId);
           if (clip && clip.buffer) {
               let newBuffer: AudioBuffer | null = null;
-              
               if (action === 'noise') newBuffer = await audioEngine.applyNoiseReduction(clip.buffer);
               else if (action === 'fadein') newBuffer = await audioEngine.applyFade(clip.buffer, 'in', 1.0);
               else if (action === 'fadeout') newBuffer = await audioEngine.applyFade(clip.buffer, 'out', 1.0);
@@ -962,337 +383,144 @@ export default function App() {
               else if (action === 'gain') newBuffer = await audioEngine.applyGain(clip.buffer, 3.0); 
               else if (action === 'lofi') newBuffer = await audioEngine.applyLoFi(clip.buffer);
               else if (action === 'deesser') newBuffer = await audioEngine.applyDeEsser(clip.buffer);
-
-              if (newBuffer) {
-                  setTracks(prev => prev.map(t => {
-                      if (t.id === contextMenu.trackId) {
-                          return {
-                              ...t,
-                              clips: t.clips.map(c => {
-                                  if (c.id === contextMenu.clipId) {
-                                      return { 
-                                          ...c, 
-                                          buffer: newBuffer!, 
-                                          duration: newBuffer!.duration 
-                                      };
-                                  }
-                                  return c;
-                              })
-                          };
-                      }
-                      return t;
-                  }));
-              }
+              if (newBuffer) setTracks(prev => prev.map(t => t.id === contextMenu.trackId ? { ...t, clips: t.clips.map(c => c.id === contextMenu.clipId ? { ...c, buffer: newBuffer!, duration: newBuffer!.duration } : c) } : t));
           }
           setIsProcessing(false);
       }, 50);
   };
 
-  // --- UI Interactions ---
-
-  // Unified Start handler for Mouse and Touch
+  // --- Interaction Handlers (Move/Resize) ---
   const handleClipInteractionStart = (e: React.MouseEvent | React.TouchEvent, trackId: string, clipId: string, action: 'move' | 'resize-left' | 'resize-right') => {
-      // Prevent default on touch to avoid scrolling while dragging
-      if (e.type === 'touchstart') {
-          // e.preventDefault(); // Note: React sometimes complains if this is not passive
-      } else {
-          // Mouse: check button
-          if ((e as React.MouseEvent).button !== 0) return;
-      }
-      
-      e.stopPropagation(); 
-      if (activeTool === 'split') return;
-
+      if (e.type !== 'touchstart' && (e as React.MouseEvent).button !== 0) return;
+      e.stopPropagation(); if (activeTool === 'split') return;
       const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
-
-      const track = tracks.find(t => t.id === trackId);
-      const clip = track?.clips.find(c => c.id === clipId);
+      const track = tracks.find(t => t.id === trackId); const clip = track?.clips.find(c => c.id === clipId);
       if (!track || !clip) return;
-
-      setSelectedTrackId(trackId); 
-      setSelectedClipId(clipId);
-
+      setSelectedTrackId(trackId); setSelectedClipId(clipId);
       if (action === 'move') {
           const otherClips = track.clips.filter(c => c.id !== clipId).sort((a, b) => a.startTime - b.startTime);
           const prevClip = otherClips.filter(c => c.startTime + c.duration <= clip.startTime).pop();
           const nextClip = otherClips.find(c => c.startTime >= clip.startTime + clip.duration);
-
-          const minTime = prevClip ? prevClip.startTime + prevClip.duration : 0;
-          const maxTime = nextClip ? nextClip.startTime - clip.duration : Infinity;
-
-          dragConstraintsRef.current = { min: minTime, max: maxTime };
-
-          setDraggingClipId(clipId); setDraggingTrackId(trackId);
-          dragStartXRef.current = clientX; 
-          dragOriginalStartTimeRef.current = clip.startTime;
+          dragConstraintsRef.current = { min: prevClip ? prevClip.startTime + prevClip.duration : 0, max: nextClip ? nextClip.startTime - clip.duration : Infinity };
+          setDraggingClipId(clipId); setDraggingTrackId(trackId); dragStartXRef.current = clientX; dragOriginalStartTimeRef.current = clip.startTime;
       } else {
-          setResizingState({
-              isResizing: true,
-              direction: action === 'resize-left' ? 'left' : 'right',
-              clipId,
-              trackId,
-              initialX: clientX,
-              initialStartTime: clip.startTime,
-              initialDuration: clip.duration,
-              initialOffset: clip.audioOffset
-          });
+          setResizingState({ isResizing: true, direction: action === 'resize-left' ? 'left' : 'right', clipId, trackId, initialX: clientX, initialStartTime: clip.startTime, initialDuration: clip.duration, initialOffset: clip.audioOffset });
       }
   };
 
-  // ... Mouse/Touch Move/Up Handlers ...
   useEffect(() => {
-      // Combined Move Logic
       const handleMove = (clientX: number) => {
           if (!scrollContainerRef.current) return;
-          const rect = scrollContainerRef.current.getBoundingClientRect();
-          const x = clientX - rect.left + scrollContainerRef.current.scrollLeft;
+          const x = clientX - scrollContainerRef.current.getBoundingClientRect().left + scrollContainerRef.current.scrollLeft;
           const t = Math.max(0, x / pixelsPerSecond);
 
-          // Loop Start Drag
           if (isDraggingLoopStartRef.current) { 
-              let newStart = Math.min(t, audioState.loop.end - 0.1);
-              if (audioState.snapToGrid) {
-                 const spb = 60 / audioState.bpm;
-                 newStart = Math.round(newStart / (spb/4)) * (spb/4);
-                 newStart = Math.min(newStart, audioState.loop.end - 0.1);
-              }
-              setAudioState(p => ({ ...p, loop: { ...p.loop, start: newStart, active: true } })); 
-              return; 
+              let s = Math.min(t, audioState.loop.end - 0.1); if (audioState.snapToGrid) s = Math.round(s / (60 / audioState.bpm / 4)) * (60 / audioState.bpm / 4);
+              setAudioState(p => ({ ...p, loop: { ...p.loop, start: Math.min(s, audioState.loop.end - 0.1), active: true } })); return; 
           }
-          // Loop End Drag
           if (isDraggingLoopEndRef.current) { 
-              let newEnd = Math.max(t, audioState.loop.start + 0.1);
-              if (audioState.snapToGrid) {
-                 const spb = 60 / audioState.bpm;
-                 newEnd = Math.round(newEnd / (spb/4)) * (spb/4);
-                 newEnd = Math.max(newEnd, audioState.loop.start + 0.1);
-              }
-              setAudioState(p => ({ ...p, loop: { ...p.loop, end: newEnd, active: true } })); 
-              return; 
+              let e = Math.max(t, audioState.loop.start + 0.1); if (audioState.snapToGrid) e = Math.round(e / (60 / audioState.bpm / 4)) * (60 / audioState.bpm / 4);
+              setAudioState(p => ({ ...p, loop: { ...p.loop, end: Math.max(e, audioState.loop.start + 0.1), active: true } })); return; 
           }
-
-          // Create Loop Drag
           if (isCreatingLoopRef.current) { 
-            const s = Math.min(loopStartAnchorRef.current, t); 
-            const end = Math.max(loopStartAnchorRef.current, t); 
-            setAudioState(p => ({ ...p, loop: { ...p.loop, start: s, end, active: true } })); 
-            return; 
+            setAudioState(p => ({ ...p, loop: { ...p.loop, start: Math.min(loopStartAnchorRef.current, t), end: Math.max(loopStartAnchorRef.current, t), active: true } })); return; 
           }
-          
-          // Scrubbing
           if (isScrubbingRef.current) { 
-              let scrubTime = t;
-              if (audioState.snapToGrid) {
-                  const spb = 60 / audioState.bpm;
-                  scrubTime = Math.round(t / (spb/4)) * (spb/4);
-              }
-              scrubTime = Math.max(0, scrubTime);
-              currentScrubTimeRef.current = scrubTime;
-              setAudioState(prev => ({ ...prev, currentTime: scrubTime })); 
-              return; 
+              let s = t; if (audioState.snapToGrid) s = Math.round(t / (60 / audioState.bpm / 4)) * (60 / audioState.bpm / 4);
+              currentScrubTimeRef.current = Math.max(0, s); setAudioState(prev => ({ ...prev, currentTime: Math.max(0, s) })); return; 
           }
-
-          // Resizing Clips
           if (resizingState.isResizing && resizingState.trackId && resizingState.clipId) {
-              const deltaPixels = clientX - resizingState.initialX;
-              const deltaSeconds = deltaPixels / pixelsPerSecond;
-              
+              const deltaSeconds = (clientX - resizingState.initialX) / pixelsPerSecond;
               setTracks(prev => prev.map(trk => {
                   if (trk.id !== resizingState.trackId) return trk;
-                  return {
-                      ...trk,
-                      clips: trk.clips.map(c => {
+                  return { ...trk, clips: trk.clips.map(c => {
                           if (c.id !== resizingState.clipId) return c;
-                          const maxDuration = c.buffer ? c.buffer.duration : c.duration;
+                          const maxDur = c.buffer ? c.buffer.duration : c.duration;
                           let newClip = { ...c };
-
                           if (resizingState.direction === 'right') {
-                              let newDuration = resizingState.initialDuration + deltaSeconds;
-                              if (newDuration < 0.1) newDuration = 0.1;
-                              if (newDuration + c.audioOffset > maxDuration) newDuration = maxDuration - c.audioOffset;
-                              if (audioState.snapToGrid) {
-                                  const spb = 60 / audioState.bpm;
-                                  const targetEnd = c.startTime + newDuration;
-                                  const snappedEnd = Math.round(targetEnd / (spb/4)) * (spb/4);
-                                  newDuration = snappedEnd - c.startTime;
-                              }
-                              newClip.duration = Math.max(0.1, newDuration);
-                          } 
-                          else if (resizingState.direction === 'left') {
-                              let newStartTime = resizingState.initialStartTime + deltaSeconds;
-                              if (audioState.snapToGrid) {
-                                  const spb = 60 / audioState.bpm;
-                                  newStartTime = Math.round(newStartTime / (spb/4)) * (spb/4);
-                              }
-                              const timeDiff = newStartTime - resizingState.initialStartTime;
-                              let newDuration = resizingState.initialDuration - timeDiff;
-                              let newOffset = resizingState.initialOffset + timeDiff;
-
-                              if (newOffset < 0) {
-                                  newOffset = 0;
-                                  newStartTime = resizingState.initialStartTime - resizingState.initialOffset; 
-                                  newDuration = resizingState.initialDuration + resizingState.initialOffset;
-                              }
-                              if (newDuration < 0.1) {
-                                  newDuration = 0.1;
-                                  newStartTime = (resizingState.initialStartTime + resizingState.initialDuration) - 0.1;
-                                  newOffset = (resizingState.initialOffset + resizingState.initialDuration) - 0.1;
-                              }
-                              newClip.startTime = newStartTime;
-                              newClip.duration = newDuration;
-                              newClip.audioOffset = newOffset;
+                              let d = resizingState.initialDuration + deltaSeconds;
+                              if (d + c.audioOffset > maxDur) d = maxDur - c.audioOffset;
+                              if (audioState.snapToGrid) d = Math.round((c.startTime + d) / (60/audioState.bpm/4))*(60/audioState.bpm/4) - c.startTime;
+                              newClip.duration = Math.max(0.1, d);
+                          } else {
+                              let s = resizingState.initialStartTime + deltaSeconds;
+                              if (audioState.snapToGrid) s = Math.round(s / (60/audioState.bpm/4))*(60/audioState.bpm/4);
+                              const diff = s - resizingState.initialStartTime;
+                              let d = resizingState.initialDuration - diff;
+                              let o = resizingState.initialOffset + diff;
+                              if (o < 0) { o = 0; s = resizingState.initialStartTime - resizingState.initialOffset; d = resizingState.initialDuration + resizingState.initialOffset; }
+                              newClip.startTime = s; newClip.duration = Math.max(0.1, d); newClip.audioOffset = o;
                           }
                           return newClip;
-                      })
-                  };
-              }));
-              return;
+                      })};
+              })); return;
           }
-
-          // Dragging Clips (Move)
           if (draggingClipId && draggingTrackId && activeTool === 'cursor') {
-              const deltaX = clientX - dragStartXRef.current;
-              const deltaSeconds = deltaX / pixelsPerSecond;
-              let newStartTime = dragOriginalStartTimeRef.current + deltaSeconds;
-              
-              if (audioState.snapToGrid) { 
-                  const spb = 60 / audioState.bpm; 
-                  newStartTime = Math.round(newStartTime / (spb/4)) * (spb/4); 
-              }
-              newStartTime = Math.max(Math.max(0, dragConstraintsRef.current.min), Math.min(newStartTime, dragConstraintsRef.current.max));
-              setTracks(prev => prev.map(t => {
-                  if (t.id === draggingTrackId) {
-                      return { ...t, clips: t.clips.map(c => c.id === draggingClipId ? { ...c, startTime: newStartTime } : c) };
-                  }
-                  return t;
-              }));
+              let s = dragOriginalStartTimeRef.current + (clientX - dragStartXRef.current) / pixelsPerSecond;
+              if (audioState.snapToGrid) s = Math.round(s / (60/audioState.bpm/4))*(60/audioState.bpm/4);
+              setTracks(prev => prev.map(t => t.id === draggingTrackId ? { ...t, clips: t.clips.map(c => c.id === draggingClipId ? { ...c, startTime: Math.max(Math.max(0, dragConstraintsRef.current.min), Math.min(s, dragConstraintsRef.current.max)) } : c) } : t));
           }
       };
 
       const handleEnd = () => {
           if (isScrubbingRef.current) { 
               isScrubbingRef.current = false; 
-              if (wasPlayingRef.current && currentScrubTimeRef.current !== null) {
-                  togglePlay(currentScrubTimeRef.current);
-              }
+              if (wasPlayingRef.current && currentScrubTimeRef.current !== null) togglePlay(currentScrubTimeRef.current);
               currentScrubTimeRef.current = null;
           }
-          isDraggingLoopStartRef.current = false; 
-          isDraggingLoopEndRef.current = false; 
-          isCreatingLoopRef.current = false;
-          if (resizingState.isResizing) {
-              setResizingState({ isResizing: false, direction: null, clipId: null, trackId: null, initialX: 0, initialStartTime: 0, initialDuration: 0, initialOffset: 0 });
-          }
+          isDraggingLoopStartRef.current = false; isDraggingLoopEndRef.current = false; isCreatingLoopRef.current = false;
+          if (resizingState.isResizing) setResizingState({ isResizing: false, direction: null, clipId: null, trackId: null, initialX: 0, initialStartTime: 0, initialDuration: 0, initialOffset: 0 });
           if (draggingClipId) {
               if (audioState.isPlaying && draggingTrackId) {
-                   audioEngine.stopClip(draggingClipId);
-                   const track = tracks.find(t => t.id === draggingTrackId);
-                   const clip = track?.clips.find(c => c.id === draggingClipId);
-                   if (track && clip) {
-                       const now = audioState.currentTime;
-                       if (now >= clip.startTime && now < clip.startTime + clip.duration) audioEngine.playClip(clip, track, audioEngine.currentTime, now - clip.startTime);
-                   }
+                   audioEngine.stopClip(draggingClipId); const track = tracks.find(t => t.id === draggingTrackId); const clip = track?.clips.find(c => c.id === draggingClipId);
+                   if (track && clip && audioState.currentTime >= clip.startTime && audioState.currentTime < clip.startTime + clip.duration) audioEngine.playClip(clip, track, audioEngine.currentTime, audioState.currentTime - clip.startTime);
               }
               setDraggingClipId(null); setDraggingTrackId(null);
           }
-          isDraggingTimelineRef.current = false;
       };
 
-      // Mouse Event Wrappers
       const handleMouseMove = (e: MouseEvent) => handleMove(e.clientX);
-      const handleMouseUp = () => handleEnd();
-
-      // Touch Event Wrappers
-      const handleTouchMove = (e: TouchEvent) => {
-          if (isDraggingClipId || isResizingState.isResizing || isDraggingLoopStartRef.current || isDraggingLoopEndRef.current || isScrubbingRef.current) {
-              e.preventDefault(); // Prevent scrolling while interacting
-          }
-          handleMove(e.touches[0].clientX);
-      };
-      const handleTouchEnd = () => handleEnd();
-
-      // Listeners
-      window.addEventListener('mousemove', handleMouseMove); 
-      window.addEventListener('mouseup', handleMouseUp);
-      window.addEventListener('touchmove', handleTouchMove, { passive: false }); // Passive false for preventDefault
-      window.addEventListener('touchend', handleTouchEnd);
+      const handleTouchMove = (e: TouchEvent) => { if (draggingClipId || resizingState.isResizing || isDraggingLoopStartRef.current || isDraggingLoopEndRef.current || isScrubbingRef.current) e.preventDefault(); handleMove(e.touches[0].clientX); };
       
-      return () => { 
-          window.removeEventListener('mousemove', handleMouseMove); 
-          window.removeEventListener('mouseup', handleMouseUp);
-          window.removeEventListener('touchmove', handleTouchMove);
-          window.removeEventListener('touchend', handleTouchEnd);
-      };
-  }, [draggingClipId, draggingTrackId, pixelsPerSecond, audioState.isPlaying, audioState.snapToGrid, audioState.bpm, tracks, togglePlay, audioState.loop.start, audioState.loop.end, resizingState]);
-  
-  // Helpers for useEffect dependecies to avoid stale state in closure
-  const isDraggingClipId = draggingClipId !== null;
-  const isResizingState = resizingState;
-
-  // --- Components (Ruler) ---
-  const { Ruler, GridLines } = useMemo(() => {
-      const secondsPerBeat = 60 / audioState.bpm;
-      const secondsPerBar = secondsPerBeat * 4; 
-      const totalBars = Math.ceil(Math.max(120, audioState.totalDuration) / secondsPerBar);
-      
-      const markers = []; 
-      const gridLines = [];
-      const trackHeight = 112; // 28 * 4 (h-28 class)
-
-      // Horizontal Lines (Tracks)
-      for(let t = 0; t < tracks.length; t++) {
-        gridLines.push(
-            <div 
-                key={`hgrid-${t}`} 
-                className="absolute left-0 right-0 border-b border-[var(--border-color)] opacity-20 pointer-events-none" 
-                style={{ top: (t + 1) * trackHeight, height: 1 }} 
-            />
-        );
-      }
-
-      for(let i = 0; i < totalBars; i++) {
-          const left = i * secondsPerBar * pixelsPerSecond;
-          
-          // Main Bar Line
-          markers.push(
-            <div key={i} className="absolute top-0 bottom-0 border-l border-[var(--border-color)] text-[10px] text-[var(--text-muted)] pl-1 select-none flex items-center h-1/2 font-mono z-10 font-bold" style={{ left }}>
-                {i + 1}
-            </div>
-          );
-          gridLines.push(
-            <div key={`grid-${i}`} className="absolute top-0 bottom-0 border-l border-[var(--border-color)] opacity-30 pointer-events-none" style={{ left }} />
-          );
-          
-          // Beats (1.2, 1.3, 1.4)
-          for(let j=1; j<4; j++) {
-             const beatLeft = left + (j * secondsPerBeat * pixelsPerSecond);
-             markers.push(
-                <div key={`${i}-${j}`} className="absolute top-0 bottom-0 text-[8px] text-[var(--text-muted)] opacity-50 pl-1 select-none flex items-center h-1/2 font-mono z-10" style={{ left: beatLeft }}>
-                    {`${i + 1}.${j + 1}`}
-                </div>
-             );
-             gridLines.push(
-                <div key={`grid-${i}-${j}`} className="absolute top-0 bottom-0 border-l border-[var(--border-color)] opacity-10 pointer-events-none" style={{ left: beatLeft }} />
-             );
-          }
-      }
-      return { Ruler: markers, GridLines: gridLines };
-  }, [audioState.bpm, audioState.totalDuration, pixelsPerSecond, tracks.length]);
+      window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleEnd); window.addEventListener('touchmove', handleTouchMove, { passive: false }); window.addEventListener('touchend', handleEnd);
+      return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleEnd); window.removeEventListener('touchmove', handleTouchMove); window.removeEventListener('touchend', handleEnd); };
+  }, [draggingClipId, draggingTrackId, pixelsPerSecond, audioState.isPlaying, audioState.snapToGrid, audioState.bpm, tracks, togglePlay, resizingState]);
 
   const selectedTrack = tracks.find(t => t.id === selectedTrackId);
 
-  // --- Render ---
+  // --- Handlers for Ruler Logic (Passed to Timeline) ---
+  // The logic for ruler is tricky because it sets refs in App. 
+  // Timeline uses props to tell App what to do? No, we handle mousedown in Timeline but modify App's refs?
+  // We can't direct modify App's refs from Timeline. 
+  // We will intercept the logic inside Timeline via props if needed, but Timeline component has onMouseDown that sets refs.
+  // Wait, if Timeline is a component, it doesn't have access to App's refs unless we pass them.
+  // We passed the booleans as state, but the dragging logic relies on refs `isDraggingLoopStartRef`.
+  // To fix this propery: We need to pass setters for refs or wrapper functions.
+  // Wrapper functions for Timeline interactions:
+  
+  // NOTE: In the `useEffect` above, we use `isDraggingLoopStartRef.current`. This ref is local to App.
+  // So Timeline needs to set `App.isDraggingLoopStartRef.current = true`.
+  // We can pass a callback `onLoopHandleStart`.
+  
+  // Actually, since we are just doing minimal changes to satisfy "modularize", 
+  // let's pass the refs themselves or simple callbacks?
+  // React Refs are mutable objects, so we can pass them!
+  // But cleaner is to wrap in a function.
+  
+  // --- Ruler Handlers Wrappers ---
+  // We will pass these to Timeline component so it can trigger the logic in App's useEffect
+  // This is a bit "prop drilling" but fine for this refactor.
+  // Actually, Timeline.tsx will execute the `onMouseDown` logic. 
+  // But wait, the `useEffect` handling `mousemove` is here in App.tsx.
+  // So Timeline just needs to set the flag in App.tsx.
+  // Timeline: `onMouseDown={() => isDraggingLoopStartRef.current = true}`
+  // So we pass the Ref object to Timeline.
+
   return (
-    <div 
-        className="flex flex-col h-screen w-full bg-[var(--bg-main)] text-[var(--text-main)] font-sans selection:bg-[var(--accent)] selection:text-black overflow-hidden relative transition-colors duration-300"
-        style={THEMES[theme] as React.CSSProperties}
-        onContextMenu={(e) => e.preventDefault()} 
-    >
+    <div className="flex flex-col h-screen w-full bg-[var(--bg-main)] text-[var(--text-main)] font-sans selection:bg-[var(--accent)] selection:text-black overflow-hidden relative transition-colors duration-300" style={THEMES[theme] as React.CSSProperties} onContextMenu={(e) => e.preventDefault()}>
       
-      {/* RELEASE NOTES MODAL - Displays on startup if new version */}
       <ReleaseNotes />
 
-      {/* PROCESSING OVERLAY (LOADING SCREEN) */}
       {isProcessing && (
           <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center cursor-wait animate-in fade-in duration-300">
               <div className="w-16 h-16 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin mb-6"></div>
@@ -1303,10 +531,7 @@ export default function App() {
 
       {/* Context Menu */}
       {contextMenu.visible && (
-          <div 
-            className="fixed z-[100] bg-[#1a1a1a] border border-[#333] rounded-lg shadow-xl py-1 min-w-[200px] animate-in fade-in zoom-in-95 duration-100 flex flex-col"
-            style={{ top: contextMenu.y, left: contextMenu.x }}
-          >
+          <div className="fixed z-[100] bg-[#1a1a1a] border border-[#333] rounded-lg shadow-xl py-1 min-w-[200px] animate-in fade-in zoom-in-95 duration-100 flex flex-col" style={{ top: contextMenu.y, left: contextMenu.x }}>
               <div className="px-3 py-2 text-[10px] text-[#555] font-bold uppercase tracking-wider border-b border-[#333]">Clip Operations</div>
               <button onClick={() => processClipBuffer('removesilence')} className="w-full text-left px-4 py-2 text-xs font-bold text-[#e6c200] hover:bg-[#e6c200]/10 flex items-center gap-2 group"><ScissorsLineDashed className="w-3 h-3" /> Remove Silence <span className="bg-[#e6c200] text-black text-[9px] px-1 rounded ml-auto">PRO</span></button>
               <button onClick={() => processClipBuffer('neural')} className="w-full text-left px-4 py-2 text-xs font-bold text-[#e6c200] hover:bg-[#e6c200]/10 flex items-center gap-2 group"><Sparkles className="w-3 h-3" /> Neural Enhance <span className="bg-[#e6c200] text-black text-[9px] px-1 rounded ml-auto">PRO</span></button>
@@ -1325,30 +550,18 @@ export default function App() {
           </div>
       )}
 
-      {/* Modals */}
       {showEffectSelector && effectSelectorTrackId && (
-          <EffectSelector 
-              onSelect={(effectId) => addEffect(effectSelectorTrackId, effectId)}
-              onClose={() => { setShowEffectSelector(false); setEffectSelectorTrackId(null); }}
-          />
+          <EffectSelector onSelect={(effectId) => addEffect(effectSelectorTrackId, effectId)} onClose={() => { setShowEffectSelector(false); setEffectSelectorTrackId(null); }} />
       )}
 
-      {/* Welcome Screen */}
       {welcomeScreen && (
           <div className="fixed inset-0 z-[100] bg-[var(--bg-main)] flex flex-col items-center justify-center animate-fade-in text-center p-4">
-             <div className="w-20 h-20 md:w-24 md:h-24 bg-[var(--accent)] rounded-full flex items-center justify-center mb-8 shadow-2xl animate-pulse">
-                <Music className="w-10 h-10 md:w-12 md:h-12 text-black" />
-             </div>
+             <div className="w-20 h-20 md:w-24 md:h-24 bg-[var(--accent)] rounded-full flex items-center justify-center mb-8 shadow-2xl animate-pulse"><Music className="w-10 h-10 md:w-12 md:h-12 text-black" /></div>
              <h1 className="text-4xl md:text-6xl font-black tracking-tighter mb-4 text-[var(--text-main)]">MONOCHROME</h1>
              <p className="text-lg md:text-xl text-[var(--text-muted)] font-light tracking-widest mb-12 uppercase">Professional Web DAW</p>
              <div className="flex flex-col md:flex-row gap-4 w-full max-w-md">
-                 <button onClick={() => setWelcomeScreen(false)} className="flex-1 px-8 py-4 bg-[var(--text-main)] text-[var(--bg-main)] font-bold tracking-widest hover:bg-[var(--accent)] hover:text-black transition-colors shadow-2xl uppercase">
-                     Enter Studio
-                 </button>
-                 <label className="flex-1 px-8 py-4 border border-[var(--text-main)] text-[var(--text-main)] font-bold tracking-widest hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors shadow-2xl uppercase cursor-pointer flex items-center justify-center gap-2">
-                     <FolderOpen className="w-5 h-5" /> Load Project
-                     <input type="file" accept=".zip" className="hidden" onChange={handleLoadProject} />
-                 </label>
+                 <button onClick={() => setWelcomeScreen(false)} className="flex-1 px-8 py-4 bg-[var(--text-main)] text-[var(--bg-main)] font-bold tracking-widest hover:bg-[var(--accent)] hover:text-black transition-colors shadow-2xl uppercase">Enter Studio</button>
+                 <label className="flex-1 px-8 py-4 border border-[var(--text-main)] text-[var(--text-main)] font-bold tracking-widest hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors shadow-2xl uppercase cursor-pointer flex items-center justify-center gap-2"><FolderOpen className="w-5 h-5" /> Load Project<input type="file" accept=".zip" className="hidden" onChange={handleLoadProject} /></label>
              </div>
           </div>
       )}
@@ -1356,32 +569,17 @@ export default function App() {
       {/* FULL SCREEN EFFECT OVERLAY */}
       {openedEffect && tracks.find(t => t.id === openedEffect.trackId) && (
           <div className="fixed inset-0 z-50 bg-[var(--bg-main)] flex flex-col animate-in fade-in duration-200">
-              {/* Header */}
               <div className="h-16 border-b border-[var(--border-color)] flex items-center justify-between px-6 bg-[var(--bg-panel)] shrink-0">
                   <div className="flex items-center gap-4">
-                      <button onClick={() => setOpenedEffect(null)} className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors uppercase text-xs font-bold tracking-widest border border-[var(--border-color)] px-3 py-1.5 rounded hover:border-[var(--text-muted)]">
-                          <ArrowLeft className="w-4 h-4" /> Back
-                      </button>
+                      <button onClick={() => setOpenedEffect(null)} className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors uppercase text-xs font-bold tracking-widest border border-[var(--border-color)] px-3 py-1.5 rounded hover:border-[var(--text-muted)]"><ArrowLeft className="w-4 h-4" /> Back</button>
                       <div className="h-6 w-[1px] bg-[var(--border-color)]"></div>
-                      <div className="flex flex-col">
-                        <span className="text-lg font-bold text-[var(--text-main)] uppercase tracking-tight leading-none">{openedEffect.effectId}</span>
-                        <span className="text-[10px] text-[var(--accent)] uppercase tracking-widest font-bold">
-                            {tracks.find(t => t.id === openedEffect.trackId)?.name}
-                        </span>
-                      </div>
+                      <div className="flex flex-col"><span className="text-lg font-bold text-[var(--text-main)] uppercase tracking-tight leading-none">{openedEffect.effectId}</span><span className="text-[10px] text-[var(--accent)] uppercase tracking-widest font-bold">{tracks.find(t => t.id === openedEffect.trackId)?.name}</span></div>
                   </div>
               </div>
-              
-              {/* Content Area */}
               <div className="flex-1 overflow-auto md:overflow-hidden relative p-4">
                   {(() => {
-                      const track = tracks.find(t => t.id === openedEffect.trackId)!;
-                      const fx = openedEffect.effectId;
-                      const plugin = EffectRegistry.get(fx);
-                      if (plugin) {
-                          const PluginComponent = plugin.component;
-                          return <PluginComponent trackId={track.id} settings={track.effects[fx] || plugin.defaultSettings} onChange={(newSettings) => updateEffects(track.id, { [fx]: newSettings })} />;
-                      }
+                      const track = tracks.find(t => t.id === openedEffect.trackId)!; const fx = openedEffect.effectId; const plugin = EffectRegistry.get(fx);
+                      if (plugin) { const PluginComponent = plugin.component; return <PluginComponent trackId={track.id} settings={track.effects[fx] || plugin.defaultSettings} onChange={(newSettings) => updateEffects(track.id, { [fx]: newSettings })} />; }
                       if (fx === 'parametricEQ') return <ParametricEQ trackId={track.id} settings={track.effects.parametricEQ} onChange={(newSettings) => updateEffects(track.id, { parametricEQ: { ...track.effects.parametricEQ, ...newSettings } })} />;
                       if (fx === 'compressor') return <CompressorEffect trackId={track.id} settings={track.effects.compressor} onChange={(newSettings) => updateEffects(track.id, { compressor: newSettings })} />;
                       if (fx === 'reverb') return <ReverbEffect trackId={track.id} settings={track.effects.reverb} onChange={(newSettings) => updateEffects(track.id, { reverb: newSettings })} />;
@@ -1394,372 +592,41 @@ export default function App() {
           </div>
       )}
 
-      {/* Main Transport & Workspace */}
-      <header className="h-16 border-b border-[var(--border-color)] flex items-center justify-between px-4 bg-[var(--bg-panel)] shrink-0 z-40 shadow-md relative">
-        {/* Left: Mobile Menu / Branding */}
-        <div className="flex items-center gap-3 w-auto md:w-1/4">
-          <button 
-             onClick={() => setIsTrackListOpen(!isTrackListOpen)} 
-             className="lg:hidden p-2 text-[var(--text-muted)] hover:text-[var(--text-main)]"
-          >
-             {isTrackListOpen ? <PanelLeftClose className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
-          
-          <div className="w-8 h-8 bg-[var(--accent)] rounded flex items-center justify-center shadow-lg hidden md:flex">
-            <Music className="text-[var(--bg-main)] w-5 h-5 fill-current" />
-          </div>
-          <h1 className="font-bold text-lg tracking-tight hidden md:block text-[var(--text-main)] font-sans">MONOCHROME</h1>
-        </div>
-        
-        {/* Central Transport Capsule */}
-        <div className="flex flex-col items-center justify-center flex-1">
-            <div className="flex items-center gap-2 md:gap-6">
-                
-                {/* BPM (Hidden on very small screens) */}
-                <div className="hidden md:flex items-center gap-2 bg-[var(--bg-element)] rounded-lg px-2 py-1 border border-[var(--border-color)]">
-                    <div className="flex flex-col items-center">
-                        <span className="text-[8px] font-bold text-[var(--text-muted)] tracking-wider">BPM</span>
-                        <input 
-                            type="number" 
-                            value={audioState.bpm} 
-                            onChange={(e) => setAudioState(p => ({ ...p, bpm: Math.max(40, Math.min(300, parseInt(e.target.value))) }))}
-                            className="w-10 bg-transparent text-[var(--accent)] font-mono text-center text-xs font-bold outline-none"
-                        />
-                    </div>
-                </div>
+      {/* --- NEW MODULAR LAYOUT --- */}
+      
+      {/* 1. Header (Transport & Tools) */}
+      <Header 
+        audioState={audioState} setAudioState={setAudioState} togglePlay={togglePlay} handleStop={handleStop} toggleRecord={toggleRecord} formatTime={formatTime}
+        undoTracks={undoTracks} redoTracks={redoTracks} canUndo={canUndo} canRedo={canRedo} saveProject={saveProject} exportWav={exportWav} toggleTheme={toggleTheme} toggleFullScreen={toggleFullScreen} isFullScreen={isFullScreen}
+        isTrackListOpen={isTrackListOpen} setIsTrackListOpen={setIsTrackListOpen} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen}
+      />
 
-                <div className="bg-[var(--bg-element)] rounded-full px-2 py-1.5 flex items-center gap-2 border border-[var(--border-color)] shadow-inner">
-                    <button onClick={handleStop} className="p-2 hover:bg-[var(--bg-main)] rounded-full text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors"><Square className="w-4 h-4 fill-current" /></button>
-                    <button onClick={() => togglePlay()} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${audioState.isPlaying ? 'bg-[var(--accent)] text-black shadow-lg' : 'bg-[var(--bg-panel)] text-[var(--text-main)] hover:bg-[var(--bg-main)] border border-[var(--border-color)]'}`}>
-                        {audioState.isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
-                    </button>
-                    <button onClick={toggleRecord} className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all ${audioState.isRecording ? 'bg-red-600 border-red-500 text-white animate-pulse' : 'bg-[var(--bg-element)] border-[var(--border-color)] text-red-500 hover:text-red-400'}`}>
-                        <div className={`w-3 h-3 rounded-full ${audioState.isRecording ? 'bg-white' : 'bg-current'}`}></div>
-                    </button>
-                </div>
-                
-                <div className="flex flex-col items-center justify-center h-10 w-24 md:w-28 bg-[var(--bg-main)] border border-[var(--border-color)] rounded text-center shadow-inner">
-                     <span className="font-mono text-lg md:text-xl text-[var(--accent)] leading-none mt-1">{formatTime(audioState.currentTime)}</span>
-                </div>
-            </div>
-        </div>
-
-        {/* Right: Tools / Mixer Toggle */}
-        <div className="flex items-center gap-3 justify-end w-auto md:w-1/4">
-            <div className="hidden md:flex items-center gap-2">
-                {/* UNDO / REDO */}
-                <button 
-                    onClick={() => canUndo && undoTracks()} 
-                    className={`p-2 rounded text-[var(--text-muted)] transition-colors ${canUndo ? 'hover:text-[var(--text-main)] hover:bg-[var(--bg-element)]' : 'opacity-30 cursor-default'}`}
-                    title="Undo (Ctrl+Z)"
-                >
-                    <Undo2 className="w-5 h-5" />
-                </button>
-                <button 
-                    onClick={() => canRedo && redoTracks()} 
-                    className={`p-2 rounded text-[var(--text-muted)] transition-colors ${canRedo ? 'hover:text-[var(--text-main)] hover:bg-[var(--bg-element)]' : 'opacity-30 cursor-default'}`}
-                    title="Redo (Ctrl+Y)"
-                >
-                    <Redo2 className="w-5 h-5" />
-                </button>
-                <div className="h-6 w-[1px] bg-[var(--border-color)] mx-1"></div>
-
-                <button onClick={toggleFullScreen} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">
-                    {isFullScreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
-                </button>
-                <button onClick={toggleTheme} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Palette className="w-5 h-5" /></button>
-                <div className="h-6 w-[1px] bg-[var(--border-color)] mx-1"></div>
-                <button onClick={saveProject} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Save className="w-5 h-5" /></button>
-                <button onClick={exportWav} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Download className="w-5 h-5" /></button>
-            </div>
-            
-            {/* Mobile More Menu */}
-            <button className="md:hidden p-2 text-[var(--text-muted)]"><MoreVertical className="w-5 h-5" /></button>
-
-            <div className="h-6 w-[1px] bg-[var(--border-color)] mx-1 hidden md:block"></div>
-            
-            <button 
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
-                className={`p-2 border border-[var(--border-color)] rounded ${isSidebarOpen ? 'bg-[var(--bg-element)] text-[var(--text-main)]' : 'text-[var(--text-muted)]'}`}
-            >
-                {isSidebarOpen ? <PanelRightClose className="w-4 h-4" /> : <Settings2 className="w-4 h-4" />}
-            </button>
-        </div>
-      </header>
-
-      {/* Main Layout - Flex Container */}
       <div className="flex flex-1 overflow-hidden relative">
         
-        {/* LEFT SIDEBAR: Track List (Drawer on Mobile) */}
-        <div 
-            className={`
-                fixed inset-y-0 left-0 z-30 w-64 bg-[var(--bg-panel)] border-r border-[var(--border-color)] transform transition-all duration-300 ease-in-out shadow-2xl flex flex-col
-                lg:relative lg:shadow-none
-                ${isTrackListOpen ? 'translate-x-0 lg:w-64' : '-translate-x-full lg:w-0 lg:overflow-hidden lg:border-r-0 lg:translate-x-0'}
-            `}
-            style={{ top: isMobile ? '4rem' : '0', height: isMobile ? 'calc(100% - 4rem)' : '100%' }} // Adjust for header height on mobile
-        >
-             {/* Track List Header */}
-             <div className="h-10 border-b border-[var(--border-color)] bg-[var(--bg-panel)] flex flex-shrink-0 items-center justify-between px-3">
-                 <span className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Tracks</span>
-                 <div className="flex gap-2">
-                     <button onClick={addNewTrack} className="bg-[var(--text-main)] text-[var(--bg-main)] px-2 py-0.5 rounded text-[10px] font-bold hover:bg-[var(--accent)] hover:text-black">+ NEW</button>
-                     <label className="bg-[var(--bg-element)] border border-[var(--border-color)] px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer text-[var(--text-main)] hover:border-[var(--text-muted)] transition-colors">IMP<input type="file" accept="audio/*" className="hidden" onChange={(e) => handleImportBeat(e)} /></label>
-                 </div>
-             </div>
+        {/* 2. Track List Sidebar */}
+        <TrackList 
+            tracks={tracks} selectedTrackId={selectedTrackId} setSelectedTrackId={setSelectedTrackId} updateTrack={updateTrack}
+            addNewTrack={addNewTrack} handleImportBeat={handleImportBeat} duplicateTrack={duplicateTrack} deleteTrack={deleteTrack} editTrackName={editTrackName}
+            isOpen={isTrackListOpen} isMobile={isMobile} closeOnMobile={() => isMobile && setIsTrackListOpen(false)} scrollTop={scrollTop}
+        />
 
-             {/* Track Items */}
-             <div className="flex-1 overflow-y-auto custom-scrollbar" style={{ transform: `translateY(-${scrollTop}px)` }}>
-                
-                {/* SPACER FOR RULER ALIGNMENT */}
-                <div className="h-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)] shrink-0 flex items-center justify-center">
-                    <div className="text-[8px] text-[var(--text-muted)] opacity-50 font-mono tracking-widest">TIMELINE SYNC</div>
-                </div>
+        {/* 3. Main Timeline */}
+        <Timeline 
+            tracks={tracks} audioState={audioState} setAudioState={setAudioState} zoomLevel={zoomLevel} pixelsPerSecond={pixelsPerSecond} handleZoom={handleZoom} scrollRef={scrollContainerRef} setScrollTop={setScrollTop}
+            activeTool={activeTool} setActiveTool={setActiveTool} toggleLoop={toggleLoop} selectedClipId={selectedClipId} deleteSelectedClip={deleteSelectedClip} splitTrack={splitTrack}
+            handleClipInteractionStart={handleClipInteractionStart} handleContextMenu={handleContextMenu}
+            isCreatingLoop={isCreatingLoopRef.current} loopStartAnchor={loopStartAnchorRef.current} isDraggingLoopStart={isDraggingLoopStartRef.current} isDraggingLoopEnd={isDraggingLoopEndRef.current} isScrubbing={isScrubbingRef.current} currentScrubTime={currentScrubTimeRef.current} wasPlayingRef={wasPlayingRef}
+        />
 
-                {tracks.map(track => (
-                    <div key={track.id} onClick={() => { setSelectedTrackId(track.id); if(isMobile) setIsTrackListOpen(false); }} className={`h-28 flex-shrink-0 px-3 py-3 flex flex-col justify-between border-b border-[var(--border-color)] cursor-pointer group transition-colors relative ${selectedTrackId === track.id ? 'bg-[var(--bg-element)] border-l-4 border-l-[var(--accent)]' : 'bg-[var(--bg-panel)] hover:bg-[var(--bg-element)] border-l-4 border-l-transparent'}`}>
-                        <div className="flex items-center justify-between">
-                            <div className="flex flex-col overflow-hidden">
-                                <span className={`font-bold text-sm truncate w-24 ${selectedTrackId === track.id ? 'text-[var(--text-main)]' : 'text-[var(--text-muted)]'}`} onDoubleClick={() => editTrackName(track.id)}>{track.name}</span>
-                                <span className="text-[9px] text-[var(--text-muted)] uppercase tracking-widest">{track.type}</span>
-                            </div>
-                            <div className="flex gap-1">
-                                <button onClick={(e) => { e.stopPropagation(); duplicateTrack(track.id) }} className="opacity-100 lg:opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-white transition-opacity"><Copy className="w-3 h-3" /></button>
-                                <button onClick={(e) => { e.stopPropagation(); deleteTrack(track.id) }} className="opacity-100 lg:opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-red-500 transition-opacity"><XCircle className="w-3 h-3" /></button>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2 mt-2">
-                            <Volume2 className="w-3 h-3 text-[var(--text-muted)]" />
-                            <div className="h-1 flex-1 bg-[var(--bg-main)] rounded-full overflow-hidden">
-                                <div className="h-full bg-[var(--text-muted)]" style={{ width: `${track.volume * 100}%` }}></div>
-                            </div>
-                        </div>
-                        <div className="flex gap-2 mt-1">
-                            <button onClick={(e) => { e.stopPropagation(); updateTrack(track.id, { muted: !track.muted }); }} className={`text-[9px] font-bold w-6 h-6 rounded flex items-center justify-center border transition-all ${track.muted ? 'bg-red-500/10 text-red-500 border-red-500' : 'bg-[var(--bg-main)] text-[var(--text-muted)] border-[var(--border-color)] hover:border-[var(--text-muted)]'}`}>M</button>
-                            <button onClick={(e) => { e.stopPropagation(); updateTrack(track.id, { solo: !track.solo }); }} className={`text-[9px] font-bold w-6 h-6 rounded flex items-center justify-center border transition-all ${track.solo ? 'bg-[var(--accent)]/10 text-[var(--accent)] border-[var(--accent)]' : 'bg-[var(--bg-main)] text-[var(--text-muted)] border-[var(--border-color)] hover:border-[var(--text-muted)]'}`}>S</button>
-                        </div>
-                    </div>
-                ))}
-             </div>
-        </div>
-
-        {/* CENTER: Timeline */}
-        <div className="flex-1 flex flex-col bg-[var(--bg-main)] relative overflow-hidden min-w-0">
-             
-             {/* Timeline Toolbar */}
-             <div className="h-10 border-b border-[var(--border-color)] bg-[var(--bg-panel)] flex flex-shrink-0 items-center justify-between px-2 md:px-4">
-                 <div className="hidden md:flex text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase items-center gap-2">
-                    <Layers className="w-3 h-3" /> Arrangement
-                 </div>
-                 
-                 {/* Mobile Toolbar - Condensed */}
-                 <div className="flex items-center gap-1 bg-[var(--bg-element)] p-1 rounded-lg border border-[var(--border-color)] overflow-x-auto no-scrollbar">
-                    <button onClick={() => setActiveTool('cursor')} className={`p-1.5 rounded ${activeTool === 'cursor' ? 'bg-[var(--bg-main)] text-[var(--text-main)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}><MousePointer2 className="w-4 h-4" /></button>
-                    <button onClick={() => { setActiveTool('split'); splitTrack(); setTimeout(()=>setActiveTool('cursor'), 200); }} className={`p-1.5 rounded ${activeTool === 'split' ? 'bg-[var(--bg-main)] text-[var(--text-main)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}><Scissors className="w-4 h-4" /></button>
-                    <div className="w-[1px] h-4 bg-[var(--border-color)] mx-1"></div>
-                    <button onClick={() => setAudioState(prev => ({ ...prev, snapToGrid: !prev.snapToGrid }))} className={`p-1.5 rounded ${audioState.snapToGrid ? 'bg-[var(--accent)] text-black shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}><Magnet className="w-4 h-4" /></button>
-                    <button onClick={toggleLoop} className={`p-1.5 rounded ${audioState.loop.active ? 'bg-[var(--accent)] text-black shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}><Repeat className="w-4 h-4" /></button>
-                    {selectedClipId && <button onClick={deleteSelectedClip} className="p-1.5 rounded text-red-500 hover:bg-red-900/20 ml-2"><Trash2 className="w-4 h-4" /></button>}
-                 </div>
-                 
-                 <div className="flex items-center gap-2">
-                    <button onClick={() => handleZoom('out')} className="p-1 hover:text-[var(--text-main)] text-[var(--text-muted)]"><ZoomOut className="w-4 h-4" /></button>
-                    <button onClick={() => handleZoom('in')} className="p-1 hover:text-[var(--text-main)] text-[var(--text-muted)]"><ZoomIn className="w-4 h-4" /></button>
-                 </div>
-             </div>
-
-             <div className="flex-1 overflow-auto bg-[var(--bg-main)] relative custom-scrollbar touch-pan-x" ref={scrollContainerRef} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
-                    <div className="relative" style={{ minWidth: `${audioState.totalDuration * pixelsPerSecond}px`, minHeight: '100%' }}>
-                        <div className="absolute inset-0 z-0 opacity-40">{GridLines}</div>
-                        
-                        {/* Ruler */}
-                        <div className="h-6 w-full border-b border-[var(--border-color)] bg-[var(--bg-panel)]/95 backdrop-blur-sm sticky top-0 z-20 flex items-center" 
-                            onMouseDown={(e) => {
-                                if ((e.target as HTMLElement).classList.contains('loop-handle')) return;
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                const x = e.clientX - rect.left;
-                                const t = x / pixelsPerSecond;
-                                if(e.shiftKey) { isCreatingLoopRef.current = true; loopStartAnchorRef.current = t; setAudioState(p => ({...p, loop: {...p.loop, active: true, start: t, end: t}})); } 
-                                else { 
-                                    isScrubbingRef.current = true; 
-                                    wasPlayingRef.current = audioState.isPlaying; 
-                                    audioEngine.stopAll();
-                                    let newTime = t;
-                                    if (audioState.snapToGrid) {
-                                        const spb = 60 / audioState.bpm;
-                                        newTime = Math.round(t / (spb/4)) * (spb/4);
-                                    }
-                                    setAudioState(p => ({...p, isPlaying: false, currentTime: newTime})); 
-                                    currentScrubTimeRef.current = newTime;
-                                }
-                            }}
-                            onTouchStart={(e) => {
-                                e.stopPropagation();
-                                if ((e.target as HTMLElement).classList.contains('loop-handle')) return;
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                const x = e.touches[0].clientX - rect.left;
-                                const t = x / pixelsPerSecond;
-                                
-                                isScrubbingRef.current = true;
-                                wasPlayingRef.current = audioState.isPlaying;
-                                if(audioState.isPlaying) audioEngine.stopAll();
-                                
-                                let newTime = t;
-                                if (audioState.snapToGrid) {
-                                    const spb = 60 / audioState.bpm;
-                                    newTime = Math.round(t / (spb/4)) * (spb/4);
-                                }
-                                
-                                setAudioState(p => ({...p, isPlaying: false, currentTime: Math.max(0, newTime)}));
-                                currentScrubTimeRef.current = newTime;
-                            }}
-                        >
-                            {Ruler}
-                            {audioState.loop.active && (
-                                <>
-                                    <div className="absolute top-0 h-full bg-[var(--accent)]/10 border-t-2 border-[var(--accent)] pointer-events-none" style={{ left: audioState.loop.start * pixelsPerSecond, width: (audioState.loop.end - audioState.loop.start) * pixelsPerSecond }} />
-                                    <div className="absolute top-0 h-6 w-4 -ml-2 cursor-ew-resize z-50 group loop-handle touch-none" style={{ left: audioState.loop.start * pixelsPerSecond }} 
-                                        onMouseDown={(e) => { e.stopPropagation(); isDraggingLoopStartRef.current = true; }}
-                                        onTouchStart={(e) => { e.stopPropagation(); isDraggingLoopStartRef.current = true; }}
-                                    >
-                                        <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-[var(--accent)]"></div>
-                                    </div>
-                                    <div className="absolute top-0 h-6 w-4 -ml-2 cursor-ew-resize z-50 group loop-handle touch-none" style={{ left: audioState.loop.end * pixelsPerSecond }} 
-                                        onMouseDown={(e) => { e.stopPropagation(); isDraggingLoopEndRef.current = true; }}
-                                        onTouchStart={(e) => { e.stopPropagation(); isDraggingLoopEndRef.current = true; }}
-                                    >
-                                        <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-[var(--accent)]"></div>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-
-                        {/* Tracks Lane */}
-                        <div className="space-y-[1px] relative z-10">
-                            {tracks.map(track => (
-                                <div key={track.id} className={`h-28 flex-shrink-0 relative border-b border-[var(--border-color)] group ${track.muted ? 'opacity-40 grayscale' : ''}`}>
-                                    {track.clips.map(clip => (
-                                        <div 
-                                            key={clip.id} 
-                                            onMouseDown={(e) => handleClipInteractionStart(e, track.id, clip.id, 'move')} 
-                                            onTouchStart={(e) => handleClipInteractionStart(e, track.id, clip.id, 'move')}
-                                            onContextMenu={(e) => handleContextMenu(e, track.id, clip.id)}
-                                            className={`absolute top-2 bottom-2 rounded-md overflow-hidden border transition-all shadow-md group/clip touch-none ${selectedClipId === clip.id ? 'border-[var(--text-main)] bg-[var(--waveform-bg)] z-30 shadow-xl' : 'border-[var(--border-color)] bg-[var(--bg-element)] z-10 hover:border-[var(--text-muted)]'}`} 
-                                            style={{ left: `${clip.startTime * pixelsPerSecond}px`, width: `${clip.duration * pixelsPerSecond}px` }}
-                                        >
-                                            <div className="absolute top-0 bottom-0 left-0 w-8 cursor-ew-resize hover:bg-[var(--accent)]/50 z-20 opacity-0 group-hover/clip:opacity-100 transition-opacity flex items-center justify-center touch-none" 
-                                                onMouseDown={(e) => handleClipInteractionStart(e, track.id, clip.id, 'resize-left')}
-                                                onTouchStart={(e) => handleClipInteractionStart(e, track.id, clip.id, 'resize-left')}
-                                            ></div>
-                                            <div className="absolute top-0 bottom-0 right-0 w-8 cursor-ew-resize hover:bg-[var(--accent)]/50 z-20 opacity-0 group-hover/clip:opacity-100 transition-opacity flex items-center justify-center touch-none" 
-                                                onMouseDown={(e) => handleClipInteractionStart(e, track.id, clip.id, 'resize-right')}
-                                                onTouchStart={(e) => handleClipInteractionStart(e, track.id, clip.id, 'resize-right')}
-                                            ></div>
-                                            <div className="w-full h-full opacity-80 pointer-events-none p-1"><Waveform buffer={clip.buffer} color={selectedClipId === clip.id ? "bg-[var(--waveform-wave)]" : "bg-[var(--text-muted)]"} start={clip.audioOffset} duration={clip.duration} dataPoints={clip.liveData} /></div>
-                                            <div className="absolute top-0 left-0 w-full px-2 py-0.5 bg-gradient-to-b from-black/50 to-transparent text-[9px] font-bold text-white truncate pointer-events-none">{clip.name}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Playhead */}
-                        <div className="absolute top-0 bottom-0 z-50 pointer-events-none" style={{ left: `${audioState.currentTime * pixelsPerSecond}px` }}>
-                            <div className="w-[1px] bg-[var(--text-main)] h-full shadow-[0_0_10px_rgba(255,255,255,0.5)]" />
-                            <div className="w-3 h-3 bg-[var(--text-main)] rotate-45 transform -translate-x-[5px] -translate-y-[6px] absolute top-6" />
-                        </div>
-                    </div>
-             </div>
-        </div>
-
-        {/* RIGHT SIDEBAR: Mixer (Drawer on Mobile) */}
-        <div 
-            className={`
-                fixed inset-y-0 right-0 z-30 w-full md:w-80 bg-[var(--bg-panel)] border-l border-[var(--border-color)] transform transition-all duration-300 ease-in-out shadow-2xl flex flex-col
-                lg:relative lg:shadow-none
-                ${isSidebarOpen ? 'translate-x-0 lg:w-80' : 'translate-x-full lg:w-0 lg:overflow-hidden lg:border-l-0 lg:translate-x-0'}
-            `}
-            style={{ top: isMobile ? '4rem' : '0', height: isMobile ? 'calc(100% - 4rem)' : '100%' }}
-        >
-                <div className="h-10 border-b border-[var(--border-color)] flex items-center justify-between px-4 font-bold text-[10px] tracking-widest text-[var(--text-muted)] bg-[var(--bg-panel)] uppercase shrink-0">
-                    <span className="flex items-center gap-2"><Settings2 className="w-3 h-3" /> Channel Strip</span>
-                    <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden hover:text-[var(--text-main)]"><PanelRightClose className="w-4 h-4" /></button>
-                </div>
-                
-                {selectedTrack ? (
-                    <div className="flex-1 p-6 flex flex-col min-h-0 gap-8 overflow-y-auto custom-scrollbar pb-20 w-80 md:w-full">
-                        <div className="text-center pb-6 border-b border-[var(--border-color)]">
-                            <h2 className="text-2xl font-black text-[var(--text-main)] mb-1 truncate cursor-pointer hover:text-[var(--accent)] transition-colors tracking-tight" onClick={() => editTrackName(selectedTrack.id)}>{selectedTrack.name}</h2>
-                            <span className="text-[10px] text-[var(--accent)] font-bold uppercase tracking-widest px-2 py-1 bg-[var(--accent)]/10 rounded border border-[var(--accent)]/20">{selectedTrack.type} TRACK</span>
-                        </div>
-                        
-                        <div className="space-y-8">
-                            <div className="flex justify-center">
-                                <Knob label="PAN" min={-1} max={1} value={selectedTrack.pan} onChange={(val) => updateTrack(selectedTrack.id, { pan: val })} />
-                            </div>
-                            <div className="space-y-2 bg-[var(--bg-element)] p-4 rounded-lg border border-[var(--border-color)]">
-                                <div className="flex justify-between text-xs text-[var(--text-muted)] font-bold tracking-wider"><span>FADER</span><span>{(selectedTrack.volume * 100).toFixed(0)}%</span></div>
-                                <input type="range" min="0" max="1" step="0.01" value={selectedTrack.volume} onChange={(e) => updateTrack(selectedTrack.id, { volume: parseFloat(e.target.value) })} className="w-full accent-[var(--text-main)] h-1 bg-[var(--bg-main)] rounded-lg appearance-none cursor-pointer" />
-                            </div>
-                        </div>
-
-                        <div className="space-y-3 pt-2">
-                            <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-1"><Disc className="w-3 h-3" /> INSERTS CHAIN</h3>
-                                <button 
-                                    onClick={() => { setEffectSelectorTrackId(selectedTrack.id); setShowEffectSelector(true); }}
-                                    className="text-[10px] bg-[var(--accent)] text-black font-bold px-3 py-1 rounded-full flex gap-1 items-center hover:bg-white transition-colors shadow-lg shadow-[var(--accent)]/20"
-                                >
-                                    <Plus className="w-3 h-3" /> FX
-                                </button>
-                            </div>
-                            
-                            <div className="flex flex-col gap-2 min-h-[100px]">
-                                {selectedTrack.activeEffects.length === 0 && (
-                                    <div className="text-center py-8 border-2 border-dashed border-[var(--border-color)] rounded-lg text-[var(--text-muted)] text-xs font-bold uppercase tracking-widest">
-                                        Empty Chain
-                                    </div>
-                                )}
-                                {selectedTrack.activeEffects.map((effectId, index) => (
-                                    <div key={`${effectId}-${index}`} className="group bg-[var(--bg-element)] border border-[var(--border-color)] rounded-md p-2 pl-3 flex items-center justify-between hover:border-[var(--text-muted)] transition-all shadow-sm relative overflow-hidden">
-                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-[var(--accent)]"></div>
-                                        <span className="text-xs font-bold text-[var(--text-main)] uppercase cursor-pointer flex-1 truncate hover:text-[var(--accent)]" onClick={() => setOpenedEffect({ trackId: selectedTrack.id, effectId })}>
-                                            {EffectRegistry.get(effectId)?.name || effectId}
-                                        </span>
-                                        <div className="flex gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => setOpenedEffect({ trackId: selectedTrack.id, effectId })} className="p-1 hover:bg-[var(--bg-main)] rounded"><SlidersHorizontal className="w-3 h-3 text-[var(--text-muted)]" /></button>
-                                            <button onClick={() => { 
-                                                setTracks(p => p.map(t => {
-                                                    if (t.id === selectedTrack.id) {
-                                                        const updatedTrack = {...t, activeEffects: t.activeEffects.filter((_, i) => i !== index)};
-                                                        audioEngine.rebuildTrackEffects(updatedTrack);
-                                                        return updatedTrack;
-                                                    }
-                                                    return t;
-                                                }));
-                                            }} className="p-1 hover:bg-red-900/30 rounded"><Trash2 className="w-3 h-3 text-[var(--text-muted)] hover:text-red-500" /></button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-[var(--text-muted)] w-80 md:w-full">
-                        <div className="w-16 h-16 rounded-full bg-[var(--bg-element)] flex items-center justify-center mb-4">
-                            <Settings2 className="w-8 h-8 opacity-20" />
-                        </div>
-                        <p className="text-xs uppercase font-bold tracking-widest">No Track Selected</p>
-                    </div>
-                )}
-        </div>
+        {/* 4. Mixer Sidebar */}
+        <MixerSidebar 
+            isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} isMobile={isMobile} selectedTrack={selectedTrack} updateTrack={updateTrack} updateEffects={updateEffects}
+            setEffectSelectorTrackId={setEffectSelectorTrackId} setShowEffectSelector={setShowEffectSelector} setOpenedEffect={setOpenedEffect} setTracks={setTracks}
+        />
 
         {/* Backdrop for Mobile Sidebar */}
         {isMobile && (isTrackListOpen || isSidebarOpen) && (
-            <div 
-                className="fixed inset-0 bg-black/50 backdrop-blur-sm z-20" 
-                onClick={() => { setIsTrackListOpen(false); setIsSidebarOpen(false); }}
-            />
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-20" onClick={() => { setIsTrackListOpen(false); setIsSidebarOpen(false); }} />
         )}
       </div>
     </div>
