@@ -814,12 +814,15 @@ export default function App() {
       });
   };
 
-  const handleZoom = (direction: 'in' | 'out') => {
+  const handleZoom = useCallback((direction: 'in' | 'out') => {
       setZoomLevel(prev => {
           const newZoom = direction === 'in' ? Math.min(5, prev + 0.2) : Math.max(0.2, prev - 0.2);
           if (scrollContainerRef.current) {
               const containerWidth = scrollContainerRef.current.offsetWidth;
-              const playheadX = audioState.currentTime * (BASE_PX_PER_SEC * newZoom);
+              // Use audioEngine time instead of state time to ensure smooth zoom during playback if possible,
+              // or just fallback to current rendered state. Using state is fine for wheel events.
+              const currentTime = audioEngine.currentTime > 0 ? (audioEngine.currentTime - playbackAnchorTimeRef.current) : 0;
+              const playheadX = currentTime * (BASE_PX_PER_SEC * newZoom);
               setTimeout(() => {
                   if (scrollContainerRef.current) {
                       scrollContainerRef.current.scrollLeft = playheadX - (containerWidth / 2);
@@ -828,7 +831,31 @@ export default function App() {
           }
           return newZoom;
       });
-  };
+  }, []);
+
+  // Zoom via Ctrl + Scroll
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+        if (e.ctrlKey) {
+            e.preventDefault();
+            if (e.deltaY < 0) {
+                handleZoom('in');
+            } else {
+                handleZoom('out');
+            }
+        }
+    };
+
+    // Use passive: false to allow preventDefault
+    container.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+        container.removeEventListener('wheel', handleWheel);
+    };
+  }, [handleZoom]);
 
   const updateTrack = (id: string, updates: Partial<Track>) => {
     setTracks(prev => prev.map(t => {
@@ -1466,9 +1493,9 @@ export default function App() {
         {/* LEFT SIDEBAR: Track List (Drawer on Mobile) */}
         <div 
             className={`
-                fixed inset-y-0 left-0 z-30 w-64 bg-[var(--bg-panel)] border-r border-[var(--border-color)] transform transition-transform duration-300 ease-in-out shadow-2xl flex flex-col
-                lg:relative lg:translate-x-0 lg:shadow-none
-                ${isTrackListOpen ? 'translate-x-0' : '-translate-x-full'}
+                fixed inset-y-0 left-0 z-30 w-64 bg-[var(--bg-panel)] border-r border-[var(--border-color)] transform transition-all duration-300 ease-in-out shadow-2xl flex flex-col
+                lg:relative lg:shadow-none
+                ${isTrackListOpen ? 'translate-x-0 lg:w-64' : '-translate-x-full lg:w-0 lg:overflow-hidden lg:border-r-0 lg:translate-x-0'}
             `}
             style={{ top: isMobile ? '4rem' : '0', height: isMobile ? 'calc(100% - 4rem)' : '100%' }} // Adjust for header height on mobile
         >
@@ -1648,19 +1675,19 @@ export default function App() {
         {/* RIGHT SIDEBAR: Mixer (Drawer on Mobile) */}
         <div 
             className={`
-                fixed inset-y-0 right-0 z-30 w-full md:w-80 bg-[var(--bg-panel)] border-l border-[var(--border-color)] transform transition-transform duration-300 ease-in-out shadow-2xl flex flex-col
-                lg:relative lg:translate-x-0 lg:shadow-none
-                ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}
+                fixed inset-y-0 right-0 z-30 w-full md:w-80 bg-[var(--bg-panel)] border-l border-[var(--border-color)] transform transition-all duration-300 ease-in-out shadow-2xl flex flex-col
+                lg:relative lg:shadow-none
+                ${isSidebarOpen ? 'translate-x-0 lg:w-80' : 'translate-x-full lg:w-0 lg:overflow-hidden lg:border-l-0 lg:translate-x-0'}
             `}
             style={{ top: isMobile ? '4rem' : '0', height: isMobile ? 'calc(100% - 4rem)' : '100%' }}
         >
-                <div className="h-10 border-b border-[var(--border-color)] flex items-center justify-between px-4 font-bold text-[10px] tracking-widest text-[var(--text-muted)] bg-[var(--bg-panel)] uppercase">
+                <div className="h-10 border-b border-[var(--border-color)] flex items-center justify-between px-4 font-bold text-[10px] tracking-widest text-[var(--text-muted)] bg-[var(--bg-panel)] uppercase shrink-0">
                     <span className="flex items-center gap-2"><Settings2 className="w-3 h-3" /> Channel Strip</span>
                     <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden hover:text-[var(--text-main)]"><PanelRightClose className="w-4 h-4" /></button>
                 </div>
                 
                 {selectedTrack ? (
-                    <div className="flex-1 p-6 flex flex-col min-h-0 gap-8 overflow-y-auto custom-scrollbar pb-20">
+                    <div className="flex-1 p-6 flex flex-col min-h-0 gap-8 overflow-y-auto custom-scrollbar pb-20 w-80 md:w-full">
                         <div className="text-center pb-6 border-b border-[var(--border-color)]">
                             <h2 className="text-2xl font-black text-[var(--text-main)] mb-1 truncate cursor-pointer hover:text-[var(--accent)] transition-colors tracking-tight" onClick={() => editTrackName(selectedTrack.id)}>{selectedTrack.name}</h2>
                             <span className="text-[10px] text-[var(--accent)] font-bold uppercase tracking-widest px-2 py-1 bg-[var(--accent)]/10 rounded border border-[var(--accent)]/20">{selectedTrack.type} TRACK</span>
@@ -1718,7 +1745,7 @@ export default function App() {
                         </div>
                     </div>
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-[var(--text-muted)]">
+                    <div className="flex-1 flex flex-col items-center justify-center text-[var(--text-muted)] w-80 md:w-full">
                         <div className="w-16 h-16 rounded-full bg-[var(--bg-element)] flex items-center justify-center mb-4">
                             <Settings2 className="w-8 h-8 opacity-20" />
                         </div>
