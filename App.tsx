@@ -1468,7 +1468,7 @@ export default function App() {
                             onMouseDown={(e) => {
                                 if ((e.target as HTMLElement).classList.contains('loop-handle')) return;
                                 const rect = e.currentTarget.getBoundingClientRect();
-                                const x = e.clientX - rect.left + scrollContainerRef.current!.scrollLeft;
+                                const x = e.clientX - rect.left;
                                 const t = x / pixelsPerSecond;
                                 if(e.shiftKey) { isCreatingLoopRef.current = true; loopStartAnchorRef.current = t; setAudioState(p => ({...p, loop: {...p.loop, active: true, start: t, end: t}})); } 
                                 else { 
@@ -1485,11 +1485,24 @@ export default function App() {
                                 }
                             }}
                             onTouchStart={(e) => {
-                                // Basic Touch scrubbing support
+                                e.stopPropagation();
+                                if ((e.target as HTMLElement).classList.contains('loop-handle')) return;
                                 const rect = e.currentTarget.getBoundingClientRect();
-                                const x = e.touches[0].clientX - rect.left + scrollContainerRef.current!.scrollLeft;
+                                const x = e.touches[0].clientX - rect.left;
                                 const t = x / pixelsPerSecond;
-                                setAudioState(p => ({...p, currentTime: Math.max(0, t)}));
+                                
+                                isScrubbingRef.current = true;
+                                wasPlayingRef.current = audioState.isPlaying;
+                                if(audioState.isPlaying) audioEngine.stopAll();
+                                
+                                let newTime = t;
+                                if (audioState.snapToGrid) {
+                                    const spb = 60 / audioState.bpm;
+                                    newTime = Math.round(t / (spb/4)) * (spb/4);
+                                }
+                                
+                                setAudioState(p => ({...p, isPlaying: false, currentTime: Math.max(0, newTime)}));
+                                currentScrubTimeRef.current = newTime;
                             }}
                         >
                             {Ruler}
@@ -1533,15 +1546,7 @@ export default function App() {
                                                 onMouseDown={(e) => handleClipInteractionStart(e, track.id, clip.id, 'resize-right')}
                                                 onTouchStart={(e) => handleClipInteractionStart(e, track.id, clip.id, 'resize-right')}
                                             ></div>
-                                            <div className="w-full h-full opacity-80 pointer-events-none p-1">
-                                                <Waveform 
-                                                    buffer={clip.buffer} 
-                                                    dataPoints={clip.liveData}
-                                                    color={selectedClipId === clip.id ? "bg-[var(--waveform-wave)]" : "bg-[var(--text-muted)]"} 
-                                                    start={clip.audioOffset} 
-                                                    duration={clip.duration} 
-                                                />
-                                            </div>
+                                            <div className="w-full h-full opacity-80 pointer-events-none p-1"><Waveform buffer={clip.buffer} color={selectedClipId === clip.id ? "bg-[var(--waveform-wave)]" : "bg-[var(--text-muted)]"} start={clip.audioOffset} duration={clip.duration} dataPoints={clip.liveData} /></div>
                                             <div className="absolute top-0 left-0 w-full px-2 py-0.5 bg-gradient-to-b from-black/50 to-transparent text-[9px] font-bold text-white truncate pointer-events-none">{clip.name}</div>
                                         </div>
                                     ))}
