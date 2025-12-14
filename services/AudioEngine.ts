@@ -28,6 +28,11 @@ class AudioEngineService {
   private recordingMimeType: string = 'audio/webm'; 
   public recordingAnalyser: AnalyserNode | null = null;
   private recordingDataArray: Uint8Array | null = null;
+  
+  // Recording Graph Nodes (for cleanup)
+  private _recSource: MediaStreamAudioSourceNode | null = null;
+  private _recGain: GainNode | null = null;
+  private _recDest: MediaStreamAudioDestinationNode | null = null;
 
   constructor() {
     this.ctxManager = new AudioContextManager();
@@ -167,20 +172,32 @@ class AudioEngineService {
   startRecording = async () => {
     this.audioChunks = [];
     try {
+        await this.resumeContext();
+
         this.mediaStream = await navigator.mediaDevices.getUserMedia({ 
             audio: { 
                 echoCancellation: false, 
                 noiseSuppression: false, 
-                autoGainControl: false, 
-                channelCount: 1 
-            } 
+                autoGainControl: false,
+                latency: 0
+            } as any
         });
         
-        const source = this.context.createMediaStreamSource(this.mediaStream);
+        // Setup Graph: Source -> Gain -> Destination
+        // Gravar do Destination garante que o áudio esteja no formato correto do AudioContext
+        this._recSource = this.context.createMediaStreamSource(this.mediaStream);
+        this._recDest = this.context.createMediaStreamDestination();
+        this._recGain = this.context.createGain();
+        this._recGain.gain.value = 1.0;
+
+        this._recSource.connect(this._recGain);
+        this._recGain.connect(this._recDest);
+
+        // Visuals
         this.recordingAnalyser = this.context.createAnalyser();
         this.recordingAnalyser.fftSize = 256; 
         this.recordingDataArray = new Uint8Array(this.recordingAnalyser.frequencyBinCount);
-        source.connect(this.recordingAnalyser);
+        this._recGain.connect(this.recordingAnalyser);
 
         if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
             this.recordingMimeType = 'audio/webm;codecs=opus';
@@ -193,7 +210,8 @@ class AudioEngineService {
         }
 
         const options = this.recordingMimeType ? { mimeType: this.recordingMimeType } : undefined;
-        this.mediaRecorder = new MediaRecorder(this.mediaStream, options);
+        // Importante: Gravar o stream do destino (Web Audio), não o stream bruto
+        this.mediaRecorder = new MediaRecorder(this._recDest.stream, options);
         this.mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) this.audioChunks.push(e.data); };
         this.mediaRecorder.start();
     } catch (err) {
@@ -215,10 +233,12 @@ class AudioEngineService {
 
   stopRecording = (): Promise<Blob> => {
       return new Promise((resolve) => {
-          if (this.recordingAnalyser) {
-              this.recordingAnalyser.disconnect();
-              this.recordingAnalyser = null;
-          }
+          // Cleanup Nodes
+          if (this.recordingAnalyser) { this.recordingAnalyser.disconnect(); this.recordingAnalyser = null; }
+          if (this._recSource) { this._recSource.disconnect(); this._recSource = null; }
+          if (this._recGain) { this._recGain.disconnect(); this._recGain = null; }
+          if (this._recDest) { this._recDest = null; }
+
           if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
               resolve(new Blob([], { type: this.recordingMimeType || 'audio/webm' }));
               return;

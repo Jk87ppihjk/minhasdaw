@@ -193,19 +193,11 @@ export class EffectsChainManager {
              chainNode(distNode, uniqueId);
         }
         else if (effectId === 'delay' && track.effects.delay.active) {
-             this.setupDelay(chain, track, uniqueId, currentInput);
-             currentInput = chain.effectNodes[`${uniqueId}_wet`]; // Actually the merge point, reused wet key logic in update
-             // Wait, setupDelay output logic needs check.
-             // Simplification: chainNode handles linear chain. Delay needs parallel.
-             // Let's refactor delay setup inside setupDelay to return output node
+             const outputNode = this.setupDelay(chain, track, uniqueId, currentInput);
+             // CRITICAL FIX: The chain must continue from the output of the delay (mixed signal), not just input or wet.
+             currentInput = outputNode;
         }
     });
-
-    // Special fix for Delay output if handled separately
-    if (track.activeEffects.includes('delay') && track.effects.delay.active) {
-         // The logic above for delay was incomplete due to split. 
-         // Let's re-implement basic delay in-line for robust chain
-    }
 
     currentInput.connect(chain.analyser);
   }
@@ -267,6 +259,18 @@ export class EffectsChainManager {
                            chain.lastReverbParams = { time: r.time, size: r.size };
                        } catch(e) {}
                   }
+              }
+              else if (effectId === 'delay') {
+                  const d = track.effects.delay;
+                  const delay = chain.effectNodes[`${uniqueId}_delay`] as DelayNode;
+                  const feedback = chain.effectNodes[`${uniqueId}_feedback`] as GainNode;
+                  const dry = chain.effectNodes[`${uniqueId}_dry`] as GainNode;
+                  const wet = chain.effectNodes[`${uniqueId}_wet`] as GainNode;
+                  
+                  if (delay) delay.delayTime.setTargetAtTime(d.time, now, 0.1);
+                  if (feedback) feedback.gain.setTargetAtTime(d.feedback, now, 0.1);
+                  if (dry) dry.gain.setTargetAtTime(1 - d.mix, now, 0.1);
+                  if (wet) wet.gain.setTargetAtTime(d.mix, now, 0.1);
               }
               else if (effectId === 'parametricEQ') {
                   const auditionIdx = track.effects.parametricEQ.auditionBandIndex;
@@ -442,7 +446,7 @@ export class EffectsChainManager {
       inputSplit.connect(pre); pre.connect(tone); tone.connect(conv); conv.connect(wet); wet.connect(merge);
   }
 
-  private setupDelay(chain: TrackChain, track: Track, uniqueId: string, currentInput: AudioNode) {
+  private setupDelay(chain: TrackChain, track: Track, uniqueId: string, currentInput: AudioNode): AudioNode {
       const context = this.ctxManager.context;
       const d = track.effects.delay;
       const delay = context.createDelay();
@@ -466,12 +470,10 @@ export class EffectsChainManager {
       chain.effectNodes[`${uniqueId}_delay`] = delay;
       chain.effectNodes[`${uniqueId}_feedback`] = feedback;
       chain.effectNodes[`${uniqueId}_dry`] = dry;
-      chain.effectNodes[`${uniqueId}_wet`] = wet; // Using wet key as the final output in update logic mostly
-      
-      // We need to store outputNode so the chain continues properly
-      // But rebuildTrackEffects iterates linearly. 
-      // For this refactor, we are hooking into the effectNodes map.
-      chain.effectNodes[`${uniqueId}_merge`] = outputNode; // Hack for return
+      chain.effectNodes[`${uniqueId}_wet`] = wet; 
+      chain.effectNodes[`${uniqueId}_merge`] = outputNode;
+
+      return outputNode;
   }
 
   private autoCorrelate(buf: Float32Array, sampleRate: number): number {
