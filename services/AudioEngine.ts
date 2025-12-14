@@ -46,6 +46,10 @@ class AudioEngineService {
   private mediaStream: MediaStream | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
+  
+  // Analyser específico para a gravação (Input Monitoring Visuals)
+  public recordingAnalyser: AnalyserNode | null = null;
+  private recordingDataArray: Uint8Array | null = null;
 
   // --- Metronome State ---
   private isMetronomePlaying: boolean = false;
@@ -324,9 +328,7 @@ class AudioEngineService {
 
   // --- PRO FEATURES ---
 
-  /** PRO 4: Automatic Silence Removal 
-   * Detects gaps > 2s and removes them, keeping 1s padding.
-   */
+  /** PRO 4: Automatic Silence Removal */
   public async removeSilence(buffer: AudioBuffer): Promise<AudioBuffer> {
       return new Promise((resolve) => {
           setTimeout(() => {
@@ -334,20 +336,15 @@ class AudioEngineService {
               const channels = buffer.numberOfChannels;
               const rawData = buffer.getChannelData(0); // Use ch0 for detection
               
-              // Settings
               const threshold = 0.005; // ~ -46dB
               const minSilenceSec = 2.0;
               const paddingSec = 1.0;
               
-              const minSilenceLen = minSilenceSec * sampleRate;
               const paddingLen = paddingSec * sampleRate;
               
-              // 1. Detect Active Regions
               const regions: {start: number, end: number}[] = [];
               let isSound = false;
               let start = 0;
-              
-              // Optimization: Check every N samples to speed up detection
               const step = 100; 
               
               for (let i = 0; i < rawData.length; i+=step) {
@@ -359,7 +356,6 @@ class AudioEngineService {
                       }
                   } else {
                       if (isSound) {
-                          // Lookahead slightly to confirm silence isn't just a zero-crossing
                           let trulySilent = true;
                           for(let j=1; j<10 && (i+j*step)<rawData.length; j++) {
                               if (Math.abs(rawData[i+j*step]) > threshold) {
@@ -367,7 +363,6 @@ class AudioEngineService {
                                   break;
                               }
                           }
-                          
                           if (trulySilent) {
                               regions.push({ start, end: i });
                               isSound = false;
@@ -375,19 +370,14 @@ class AudioEngineService {
                       }
                   }
               }
-              // Close last region if active
               if (isSound) regions.push({ start, end: rawData.length });
               
               if (regions.length === 0) {
-                  // No sound detected, return original (or empty, but original is safer UX)
                   resolve(buffer);
                   return;
               }
 
-              // 2. Expand Regions with Padding & Merge
               const mergedRegions: {start: number, end: number}[] = [];
-              
-              // First pass: Expand
               let currentStart = Math.max(0, regions[0].start - paddingLen);
               let currentEnd = Math.min(rawData.length, regions[0].end + paddingLen);
               
@@ -397,7 +387,6 @@ class AudioEngineService {
                   const rEnd = Math.min(rawData.length, r.end + paddingLen);
                   
                   if (rStart <= currentEnd) {
-                      // Overlap
                       currentEnd = Math.max(currentEnd, rEnd);
                   } else {
                       mergedRegions.push({ start: currentStart, end: currentEnd });
@@ -407,11 +396,9 @@ class AudioEngineService {
               }
               mergedRegions.push({ start: currentStart, end: currentEnd });
               
-              // 3. Construct New Buffer
               const totalLength = mergedRegions.reduce((acc, r) => acc + (r.end - r.start), 0);
               
               if (totalLength === 0 || totalLength >= rawData.length) {
-                  // No silence removed or empty
                   resolve(buffer);
                   return;
               }
@@ -425,13 +412,11 @@ class AudioEngineService {
                   
                   for (const r of mergedRegions) {
                       const len = r.end - r.start;
-                      // Safe copy
                       const chunk = origData.subarray(r.start, r.end);
                       newData.set(chunk, writePtr);
                       writePtr += len;
                   }
               }
-              
               resolve(newBuffer);
           }, 100);
       });
@@ -458,7 +443,6 @@ class AudioEngineService {
                       data[i] = sample;
                   }
               }
-              // Normalize post-process
               let maxPeak = 0;
               for(let c=0; c<channels; c++) {
                   const data = newBuffer.getChannelData(c);
@@ -476,28 +460,21 @@ class AudioEngineService {
       });
   }
 
-  /** PRO 2: Lo-Fi Crusher
-   * Reduces bit depth and applies mild distortion for vintage feel.
-   */
+  /** PRO 2: Lo-Fi Crusher */
   public async applyLoFi(buffer: AudioBuffer): Promise<AudioBuffer> {
       return new Promise((resolve) => {
           setTimeout(() => {
               const newBuffer = this.cloneBuffer(buffer);
               const channels = newBuffer.numberOfChannels;
-              
-              const bitDepth = 8; // 8-bit sound
+              const bitDepth = 8;
               const step = 1 / Math.pow(2, bitDepth);
               
               for(let c = 0; c < channels; c++) {
                   const data = newBuffer.getChannelData(c);
                   for(let i=0; i<data.length; i++) {
-                      // Bit Crushing
                       let sample = data[i];
                       sample = Math.round(sample / step) * step;
-                      
-                      // Slight Sample Hold / Aliasing Simulation (Skipping samples would change length, so we just add noise)
-                      if (i % 2 !== 0) sample = data[i-1]; // Halve effective sample rate roughly
-                      
+                      if (i % 2 !== 0) sample = data[i-1]; 
                       data[i] = sample;
                   }
               }
@@ -506,29 +483,20 @@ class AudioEngineService {
       });
   }
 
-  /** PRO 3: Vocal De-Esser
-   * Attenuates high frequency bursts (sibilance) intelligently.
-   */
+  /** PRO 3: Vocal De-Esser */
   public async applyDeEsser(buffer: AudioBuffer): Promise<AudioBuffer> {
       return new Promise((resolve) => {
           setTimeout(() => {
               const newBuffer = this.cloneBuffer(buffer);
               const channels = newBuffer.numberOfChannels;
-              const sampleRate = newBuffer.sampleRate;
-              
-              // Simple derivative-based high frequency detection
-              // High frequencies have steep slopes between samples
-              const threshold = 0.15; // Sibilance sensitivity
-              const reduction = 0.6; // Attenuation factor
+              const threshold = 0.15; 
+              const reduction = 0.6; 
               
               for(let c = 0; c < channels; c++) {
                   const data = newBuffer.getChannelData(c);
                   for(let i=1; i<data.length; i++) {
                       const slope = Math.abs(data[i] - data[i-1]);
-                      
-                      // If slope is extremely steep, it's likely high freq noise/sibilance
                       if (slope > threshold) {
-                          // Attenuate current sample smoothly
                           data[i] *= reduction;
                       }
                   }
@@ -659,7 +627,6 @@ class AudioEngineService {
 
         // 2. FALLBACK TO LEGACY HARDCODED EFFECTS
         if (effectId === 'autoPitch' && track.effects.autoPitch.active) {
-            // FIX: Reduce Buffer Size to 2048 (approx 46ms latency) or 1024 (23ms) to fix sync issues. 
             const bufferSize = 2048; 
             const processor = this.context.createScriptProcessor(bufferSize, 1, 1);
             const delayBuffer = new Float32Array(bufferSize * 2);
@@ -704,24 +671,21 @@ class AudioEngineService {
                 }
 
                 const smoothing = Math.max(0.0001, currentSettings.speed * 0.1); 
-                const grainLen = 1024; // Keep grain length consistent
+                const grainLen = 1024; 
 
                 for (let i = 0; i < input.length; i++) {
                     delayBuffer[writePos] = input[i];
                     currentPitchFactor += (targetPitchFactor - currentPitchFactor) * smoothing;
                     
-                    // Pitch Shifting Logic (Ring Buffer)
                     let phA = phaseMain % grainLen; if (phA < 0) phA += grainLen;
                     let phB = (phaseMain + grainLen/2) % grainLen; if (phB < 0) phB += grainLen;
                     
-                    // Read back from buffer
                     let readPosA = writePos - phA; while (readPosA < 0) readPosA += delayBuffer.length;
                     let readPosB = writePos - phB; while (readPosB < 0) readPosB += delayBuffer.length;
                     
                     let valA = delayBuffer[Math.floor(readPosA) % delayBuffer.length];
                     let valB = delayBuffer[Math.floor(readPosB) % delayBuffer.length];
                     
-                    // Crossfade
                     let gainA = 1.0 - Math.abs((phA - grainLen/2) / (grainLen/2));
                     let gainB = 1.0 - Math.abs((phB - grainLen/2) / (grainLen/2));
                     
@@ -738,20 +702,17 @@ class AudioEngineService {
             const bands = track.effects.parametricEQ.bands;
 
             if (typeof auditionIdx === 'number' && auditionIdx !== -1 && bands[auditionIdx]) {
-                // AUDITION MODE (SOLO BAND)
-                // Substitui a cadeia completa por um único filtro Bandpass
                 const band = bands[auditionIdx];
                 const n = this.context.createBiquadFilter();
                 n.type = 'bandpass';
                 n.frequency.value = band.freq;
-                n.Q.value = band.q; // Usa o Q original para definir a largura da banda de audição
+                n.Q.value = band.q; 
                 
                 currentInput.connect(n);
                 currentInput = n;
                 chain.parametricEQNodes.push(n);
 
             } else {
-                // NORMAL MODE
                 track.effects.parametricEQ.bands.forEach((band, bIndex) => {
                     const n = this.context.createBiquadFilter();
                     n.type = band.type;
@@ -961,7 +922,6 @@ class AudioEngineService {
       });
   }
 
-  // ... (setTrackVolume, etc) ...
   setTrackVolume = (trackId: string, volume: number) => {
     const chain = this.trackChains.get(trackId);
     if (chain) chain.gain.gain.setTargetAtTime(volume, this.context.currentTime, 0.02);
@@ -1036,7 +996,6 @@ class AudioEngineService {
 
   private generateReverbImpulse(duration: number, size: number): AudioBuffer {
       const rate = this.context.sampleRate;
-      // FIX: Ensure length is a positive integer to prevent createBuffer crash
       const length = Math.max(1, Math.floor(rate * (duration || 2.0)));
       const impulse = this.context.createBuffer(2, length, rate);
       const L = impulse.getChannelData(0);
@@ -1076,6 +1035,14 @@ class AudioEngineService {
     this.audioChunks = [];
     try {
         this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 } });
+        
+        // Setup Live Analyser
+        const source = this.context.createMediaStreamSource(this.mediaStream);
+        this.recordingAnalyser = this.context.createAnalyser();
+        this.recordingAnalyser.fftSize = 256; 
+        this.recordingDataArray = new Uint8Array(this.recordingAnalyser.frequencyBinCount);
+        source.connect(this.recordingAnalyser);
+
         this.mediaRecorder = new MediaRecorder(this.mediaStream);
         this.mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) this.audioChunks.push(e.data); };
         this.mediaRecorder.start();
@@ -1085,8 +1052,27 @@ class AudioEngineService {
     }
   }
 
+  // Novo método para pegar pico atual da gravação (para desenhar onda)
+  getRecordingPeak = (): number => {
+      if (!this.recordingAnalyser || !this.recordingDataArray) return 0;
+      this.recordingAnalyser.getByteTimeDomainData(this.recordingDataArray);
+      let max = 0;
+      // Time Domain vai de 0 a 255, onde 128 é o silêncio.
+      for (let i = 0; i < this.recordingDataArray.length; i++) {
+          const val = (this.recordingDataArray[i] - 128) / 128.0;
+          if (Math.abs(val) > max) max = Math.abs(val);
+      }
+      return max;
+  }
+
   stopRecording = (): Promise<Blob> => {
       return new Promise((resolve) => {
+          // Limpa analyser
+          if (this.recordingAnalyser) {
+              this.recordingAnalyser.disconnect();
+              this.recordingAnalyser = null;
+          }
+
           if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
               resolve(new Blob([], { type: 'audio/webm' }));
               return;
@@ -1166,8 +1152,6 @@ class AudioEngineService {
                    const conv = offlineCtx.createConvolver(); 
                    
                    try {
-                       // Use a dummy buffer if context differs, or just reuse if simple
-                       // For offline, we regenerate to be safe
                        const impulse = this.generateReverbImpulse(r.time, r.size); 
                        conv.buffer = impulse; 
                    } catch(e) {}
@@ -1190,27 +1174,8 @@ class AudioEngineService {
                   delay.connect(fb); fb.connect(delay);
                   current.connect(delay); current = delay; // Simplistic mix for offline, typically needs Dry/Wet
               }
-              // NOTE: Auto-Tune (ScriptProcessor) is unstable in OfflineAudioContext and often causes sync drift or silence.
-              // For a professional export, we would need a non-realtime pitch shift algorithm.
-              // For now, we omit it or use the same risky ScriptProcessor logic (which requires careful buffer handling).
-              // We will omit complex ScriptProcessor effects in offline render to preserve sync for now, 
-              // as they are the primary cause of "descaixado do beat" (out of sync).
               else if (effectId === 'autoPitch' && track.effects.autoPitch.active) {
-                  // Attempting to include it but with 2048 buffer
-                  const bufferSize = 2048;
-                  const processor = offlineCtx.createScriptProcessor(bufferSize, 1, 1);
-                  // Copy logic from rebuildTrackEffects...
-                  // (Ideally refactor this into a reusable class/function to avoid code duplication)
-                  // For brevity in this XML patch, we skip duplicating the entire logic here unless strictly requested,
-                  // because ScriptProcessor in Offline is deprecated and unreliable.
-                  // However, keeping it blank means no autotune on export.
-                  // Let's implement a passthrough or minimal attempt if needed. 
-                  current.connect(processor);
-                  processor.connect(offlineCtx.destination); // ScriptProcessor needs destination connection to fire events
-                  // But wait, the chain expects 'current' to continue.
-                  // Standard offline context often fails with SPNodes.
-                  // STRATEGY: Skip AutoTune on Export to prevent Sync Drift until AudioWorklet is implemented.
-                  // console.warn("Auto-Tune disabled on export to prevent sync drift.");
+                  // Auto-Tune logic often skipped in simple offline render to avoid sync issues or require complex implementation
               }
           });
 

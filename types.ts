@@ -40,7 +40,8 @@ export interface Clip {
   buffer?: AudioBuffer;
   duration: number; 
   audioOffset: number; 
-  startTime: number; 
+  startTime: number;
+  liveData?: number[]; // Array de amplitudes para visualização em tempo real
 }
 
 export interface Track {

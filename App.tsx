@@ -169,6 +169,11 @@ export default function App() {
   const rafRef = useRef<number>(0);
   const recordingStartTimeRef = useRef<number>(0);
   const playStartCursorRef = useRef<number>(0);
+  
+  // Recording Live Data Refs
+  const recordingWaveformRef = useRef<number[]>([]);
+  const recordingTrackIdRef = useRef<string | null>(null);
+  const recordingClipIdRef = useRef<string | null>(null);
 
   // Dragging / Navigation State
   const [draggingClipId, setDraggingClipId] = useState<string | null>(null);
@@ -536,47 +541,107 @@ export default function App() {
   const toggleRecord = async () => {
     audioEngine.resumeContext();
     if (audioState.isRecording) {
+      // STOP RECORDING
       const blob = await audioEngine.stopRecording();
       const arrayBuffer = await blob.arrayBuffer();
       const audioBuffer = await audioEngine.decodeAudioData(arrayBuffer);
-      const newClip: Clip = {
-          id: crypto.randomUUID(),
-          name: "Rec Take",
-          blob: blob,
-          buffer: audioBuffer,
-          duration: audioBuffer.duration,
-          audioOffset: 0,
-          startTime: recordingStartTimeRef.current,
-      };
-      const selectedTrack = tracks.find(t => t.id === selectedTrackId);
-      if (selectedTrack && selectedTrack.type === TrackType.VOCAL) {
+      
+      const recClipId = recordingClipIdRef.current;
+      const recTrackId = recordingTrackIdRef.current;
+
+      if (recClipId && recTrackId) {
+          // Substitui o clipe temporário pelo clipe real finalizado
+          const newClip: Clip = {
+              id: recClipId, // Mantém o ID para transição suave
+              name: "Rec Take",
+              blob: blob,
+              buffer: audioBuffer,
+              duration: audioBuffer.duration,
+              audioOffset: 0,
+              startTime: recordingStartTimeRef.current,
+          };
+
           setTracks(prev => prev.map(t => {
-              if (t.id === selectedTrack.id) return { ...t, clips: [...t.clips, newClip] };
+              if (t.id === recTrackId) {
+                  return { 
+                      ...t, 
+                      clips: t.clips.map(c => c.id === recClipId ? newClip : c) 
+                  };
+              }
               return t;
           }));
-      } else {
-          const newTrack: Track = {
-            id: crypto.randomUUID(),
-            name: `Vocal Rec ${tracks.filter(t => t.type === TrackType.VOCAL).length + 1}`,
-            type: TrackType.VOCAL,
-            volume: 1.0,
-            pan: 0,
-            muted: false,
-            solo: false,
-            clips: [newClip],
-            effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() },
-            activeEffects: []
-          };
-          setTracks(prev => [...prev, newTrack]);
-          setSelectedTrackId(newTrack.id);
       }
+
+      recordingClipIdRef.current = null;
+      recordingTrackIdRef.current = null;
+      recordingWaveformRef.current = [];
       setAudioState(prev => ({ ...prev, isRecording: false }));
+
     } else {
+      // START RECORDING
       try {
         await audioEngine.startRecording();
         recordingStartTimeRef.current = audioState.currentTime;
+        recordingWaveformRef.current = [];
+        
+        // Identificar a track alvo
+        let targetTrackId = selectedTrackId;
+        const selectedTrack = tracks.find(t => t.id === selectedTrackId);
+        
+        // Se não houver track selecionada ou não for VOCAL, cria uma nova
+        if (!selectedTrack || selectedTrack.type !== TrackType.VOCAL) {
+            const newTrack: Track = {
+                id: crypto.randomUUID(),
+                name: `Vocal Rec ${tracks.filter(t => t.type === TrackType.VOCAL).length + 1}`,
+                type: TrackType.VOCAL,
+                volume: 1.0,
+                pan: 0,
+                muted: false,
+                solo: false,
+                clips: [],
+                effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() },
+                activeEffects: []
+            };
+            // Usa setState callback para garantir que temos o estado mais recente
+            setTracks(prev => {
+                const updatedTracks = [...prev, newTrack];
+                targetTrackId = newTrack.id;
+                recordingTrackIdRef.current = newTrack.id;
+                return updatedTracks;
+            });
+            setSelectedTrackId(newTrack.id);
+        } else {
+            recordingTrackIdRef.current = selectedTrack.id;
+        }
+
+        // Criar clipe temporário ("Fantasma")
+        const tempClipId = crypto.randomUUID();
+        recordingClipIdRef.current = tempClipId;
+        
+        const tempClip: Clip = {
+            id: tempClipId,
+            name: "Recording...",
+            duration: 0, // Vai crescer
+            audioOffset: 0,
+            startTime: recordingStartTimeRef.current,
+            liveData: [] // Dados para visualização em tempo real
+        };
+
+        // Adiciona o clipe fantasma à track
+        // Precisamos esperar o setTracks anterior (se houver) processar, então usamos timeout 0 ou encadeamos logicamente
+        // Simplificação: Assumimos que o ID já existe ou foi criado acima
+        setTimeout(() => {
+            setTracks(prev => prev.map(t => {
+                if (t.id === recordingTrackIdRef.current) {
+                    return { ...t, clips: [...t.clips, tempClip] };
+                }
+                return t;
+            }));
+        }, 0);
+
         setAudioState(prev => ({ ...prev, isRecording: true }));
         if (!audioState.isPlaying) togglePlay();
+
       } catch (err) {
         alert("Microphone error.");
       }
@@ -589,6 +654,12 @@ export default function App() {
 
   const togglePlay = useCallback((startTime?: number) => {
     audioEngine.resumeContext();
+    
+    // Se estiver gravando e pausar, para a gravação
+    if (audioState.isRecording) {
+        toggleRecord(); // Isso vai parar a gravação
+    }
+
     setAudioState(prev => {
         if (prev.isPlaying && startTime === undefined) {
             audioEngine.stopAll();
@@ -602,9 +673,12 @@ export default function App() {
             return { ...prev, isPlaying: true };
         }
     });
-  }, []);
+  }, [audioState.isRecording]); // Dependência importante!
 
   const handleStop = () => {
+       if (audioState.isRecording) {
+           toggleRecord();
+       }
        audioEngine.stopAll();
        cancelAnimationFrame(rafRef.current);
        setAudioState(prev => ({ ...prev, isPlaying: false, currentTime: 0 }));
@@ -630,6 +704,38 @@ export default function App() {
             const now = audioEngine.currentTime;
             let visualTime = now - playbackAnchorTimeRef.current;
             
+            // --- RECORDING UPDATE LOGIC ---
+            if (audioState.isRecording && recordingClipIdRef.current && recordingTrackIdRef.current) {
+                // Captura pico atual do microfone
+                const peak = audioEngine.getRecordingPeak();
+                recordingWaveformRef.current.push(peak);
+                
+                // Otimização: A cada X frames atualiza o estado React para desenhar
+                // Fazer todo frame pode ser pesado, mas vamos tentar
+                setTracks(prevTracks => {
+                    return prevTracks.map(t => {
+                        if (t.id === recordingTrackIdRef.current) {
+                            return {
+                                ...t,
+                                clips: t.clips.map(c => {
+                                    if (c.id === recordingClipIdRef.current) {
+                                        return {
+                                            ...c,
+                                            duration: Math.max(0, visualTime - c.startTime),
+                                            // Passamos uma cópia leve do array ou o próprio ref
+                                            liveData: [...recordingWaveformRef.current] 
+                                        };
+                                    }
+                                    return c;
+                                })
+                            };
+                        }
+                        return t;
+                    });
+                });
+            }
+            // ------------------------------
+
             if (audioState.loop.active) {
                 if (visualTime >= audioState.loop.end) {
                     audioEngine.stopAll();
@@ -641,6 +747,8 @@ export default function App() {
             } else if (visualTime >= audioState.totalDuration) {
                audioEngine.stopAll();
                setAudioState(prev => ({ ...prev, currentTime: 0, isPlaying: false }));
+               // Se acabar o tempo total e estiver gravando, para a gravação também
+               if (audioState.isRecording) toggleRecord();
                cancelAnimationFrame(rafRef.current);
                return;
             }
@@ -657,7 +765,7 @@ export default function App() {
         audioEngine.stopAll();
     }
     return () => cancelAnimationFrame(rafRef.current);
-  }, [audioState.isPlaying, audioState.loop]); 
+  }, [audioState.isPlaying, audioState.loop, audioState.isRecording]); 
 
   // Sync BPM
   useEffect(() => {
@@ -1425,7 +1533,15 @@ export default function App() {
                                                 onMouseDown={(e) => handleClipInteractionStart(e, track.id, clip.id, 'resize-right')}
                                                 onTouchStart={(e) => handleClipInteractionStart(e, track.id, clip.id, 'resize-right')}
                                             ></div>
-                                            <div className="w-full h-full opacity-80 pointer-events-none p-1"><Waveform buffer={clip.buffer} color={selectedClipId === clip.id ? "bg-[var(--waveform-wave)]" : "bg-[var(--text-muted)]"} start={clip.audioOffset} duration={clip.duration} /></div>
+                                            <div className="w-full h-full opacity-80 pointer-events-none p-1">
+                                                <Waveform 
+                                                    buffer={clip.buffer} 
+                                                    dataPoints={clip.liveData}
+                                                    color={selectedClipId === clip.id ? "bg-[var(--waveform-wave)]" : "bg-[var(--text-muted)]"} 
+                                                    start={clip.audioOffset} 
+                                                    duration={clip.duration} 
+                                                />
+                                            </div>
                                             <div className="absolute top-0 left-0 w-full px-2 py-0.5 bg-gradient-to-b from-black/50 to-transparent text-[9px] font-bold text-white truncate pointer-events-none">{clip.name}</div>
                                         </div>
                                     ))}
