@@ -64,11 +64,18 @@ export const Timeline: React.FC<TimelineProps> = ({
         // Horizontal Scroll: Shift + Scroll
         else if (e.shiftKey) {
             e.preventDefault();
+            // Ajusta o scrollLeft com base no movimento da roda (deltaY)
+            // Multiplicamos por um fator para acelerar um pouco o scroll horizontal se necessário
             container.scrollLeft += e.deltaY;
         }
     };
+
+    // Passive: false é necessário para usar preventDefault()
     container.addEventListener('wheel', handleWheel, { passive: false });
-    return () => container.removeEventListener('wheel', handleWheel);
+
+    return () => {
+        container.removeEventListener('wheel', handleWheel);
+    };
   }, [handleZoom, scrollRef]);
 
   // --- Ruler & Grid Memoization ---
@@ -160,13 +167,8 @@ export const Timeline: React.FC<TimelineProps> = ({
                             
                             if(e.shiftKey) { 
                                 // Logic for Loop Creation is passed down via props implicitly or handled in App
-                                // But since we modularized, we need to ensure functionality.
-                                // NOTE: The state update for loop creation was in App.tsx handlers.
-                                // We are only emitting UI events here usually.
                             } 
                         }}
-                        // Standard touch/mouse events for scrubbing are handled by the container in App.tsx
-                        // or by the specific elements.
                     >
                         {Ruler}
                         {audioState.loop.active && (
@@ -212,10 +214,11 @@ export const Timeline: React.FC<TimelineProps> = ({
                         ))}
                     </div>
 
-                    {/* Playhead */}
-                    <div className="absolute top-0 bottom-0 z-50 pointer-events-none" style={{ left: `${audioState.currentTime * pixelsPerSecond}px` }}>
+                    {/* Playhead (Agulha) - Z-Index 50 e pointer-events-none para não atrapalhar */}
+                    <div className="absolute top-0 bottom-0 z-50 pointer-events-none transition-none" style={{ left: `${audioState.currentTime * pixelsPerSecond}px` }}>
                         <div className="w-[1px] bg-[var(--text-main)] h-full shadow-[0_0_10px_rgba(255,255,255,0.5)]" />
-                        <div className="w-3 h-3 bg-[var(--text-main)] rotate-45 transform -translate-x-[5px] -translate-y-[6px] absolute top-6" />
+                        {/* Cabeça da Agulha */}
+                        <div className="w-3 h-3 bg-[var(--text-main)] rotate-45 transform -translate-x-[5px] -translate-y-[6px] absolute top-6 shadow-md" />
                     </div>
                 </div>
          </div>
