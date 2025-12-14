@@ -1394,7 +1394,7 @@ export default function App() {
                 lg:relative lg:translate-x-0 lg:shadow-none
                 ${isTrackListOpen ? 'translate-x-0' : '-translate-x-full'}
             `}
-            style={{ top: isMobile && !isFullScreen ? '4rem' : '0' }} // Adjust for header height on mobile
+            style={{ top: isMobile ? '4rem' : '0', height: isMobile ? 'calc(100% - 4rem)' : '100%' }} // Adjust for header height on mobile
         >
              {/* Track List Header */}
              <div className="h-10 border-b border-[var(--border-color)] bg-[var(--bg-panel)] flex flex-shrink-0 items-center justify-between px-3">
@@ -1565,7 +1565,7 @@ export default function App() {
                 lg:relative lg:translate-x-0 lg:shadow-none
                 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}
             `}
-            style={{ top: isMobile && !isFullScreen ? '4rem' : '0' }}
+            style={{ top: isMobile ? '4rem' : '0', height: isMobile ? 'calc(100% - 4rem)' : '100%' }}
         >
                 <div className="h-10 border-b border-[var(--border-color)] flex items-center justify-between px-4 font-bold text-[10px] tracking-widest text-[var(--text-muted)] bg-[var(--bg-panel)] uppercase">
                     <span className="flex items-center gap-2"><Settings2 className="w-3 h-3" /> Channel Strip</span>
