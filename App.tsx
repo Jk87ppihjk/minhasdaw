@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette, Activity, FolderOpen, Wand2, Copy, ArrowLeftRight, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, GripVertical, Menu, PanelLeftClose, MoreVertical } from 'lucide-react';
+import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette, Activity, FolderOpen, Wand2, Copy, ArrowLeftRight, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, GripVertical, Menu, PanelLeftClose, MoreVertical, Maximize, Minimize } from 'lucide-react';
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
 import { audioEngine } from './services/AudioEngine';
@@ -123,6 +123,7 @@ export default function App() {
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [isFullScreen, setIsFullScreen] = useState(false);
   
   // Responsive UI State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Right Sidebar (Mixer)
@@ -241,6 +242,27 @@ export default function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Listen for fullscreen changes (e.g. user pressing ESC)
+  useEffect(() => {
+      const handleFullScreenChange = () => {
+          setIsFullScreen(!!document.fullscreenElement);
+      };
+      document.addEventListener('fullscreenchange', handleFullScreenChange);
+      return () => document.removeEventListener('fullscreenchange', handleFullScreenChange);
+  }, []);
+
+  const toggleFullScreen = async () => {
+      try {
+          if (!document.fullscreenElement) {
+              await document.documentElement.requestFullscreen();
+          } else {
+              await document.exitFullscreen();
+          }
+      } catch (err) {
+          console.error("Error toggling fullscreen:", err);
+      }
+  };
 
   // --- Theme Toggle ---
   const toggleTheme = () => {
@@ -1231,6 +1253,9 @@ export default function App() {
         {/* Right: Tools / Mixer Toggle */}
         <div className="flex items-center gap-3 justify-end w-auto md:w-1/4">
             <div className="hidden md:flex items-center gap-2">
+                <button onClick={toggleFullScreen} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">
+                    {isFullScreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+                </button>
                 <button onClick={toggleTheme} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Palette className="w-5 h-5" /></button>
                 <div className="h-6 w-[1px] bg-[var(--border-color)] mx-1"></div>
                 <button onClick={saveProject} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Save className="w-5 h-5" /></button>
@@ -1261,7 +1286,7 @@ export default function App() {
                 lg:relative lg:translate-x-0 lg:shadow-none
                 ${isTrackListOpen ? 'translate-x-0' : '-translate-x-full'}
             `}
-            style={{ top: isMobile ? '4rem' : '0' }} // Adjust for header height on mobile
+            style={{ top: isMobile && !isFullScreen ? '4rem' : '0' }} // Adjust for header height on mobile
         >
              {/* Track List Header */}
              <div className="h-10 border-b border-[var(--border-color)] bg-[var(--bg-panel)] flex flex-shrink-0 items-center justify-between px-3">
@@ -1424,7 +1449,7 @@ export default function App() {
                 lg:relative lg:translate-x-0 lg:shadow-none
                 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}
             `}
-            style={{ top: isMobile ? '4rem' : '0' }}
+            style={{ top: isMobile && !isFullScreen ? '4rem' : '0' }}
         >
                 <div className="h-10 border-b border-[var(--border-color)] flex items-center justify-between px-4 font-bold text-[10px] tracking-widest text-[var(--text-muted)] bg-[var(--bg-panel)] uppercase">
                     <span className="flex items-center gap-2"><Settings2 className="w-3 h-3" /> Channel Strip</span>
