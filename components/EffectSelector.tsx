@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Sliders, Activity, Zap, Mic2, Waves, Speaker, Filter, X, Smartphone } from 'lucide-react';
+import { Search, Sliders, Activity, Zap, Mic2, Waves, Speaker, Filter, X, Smartphone, Scaling, Music2 } from 'lucide-react';
 import { EffectRegistry } from '../services/EffectRegistry';
 
 interface EffectSelectorProps {
@@ -20,6 +20,8 @@ interface EffectMeta {
 // Mapa de metadados para apresentação visual bonita
 const EFFECT_LIBRARY: EffectMeta[] = [
   // Pocket Series (Mobile Optimized)
+  { id: 'pocketTune', name: 'Pocket Tune', category: 'MOBILE POCKET', description: 'Pro pitch correction with scale.', icon: Music2 },
+  { id: 'pocketWide', name: 'Pocket Wide', category: 'MOBILE POCKET', description: 'Stereo widener & imager.', icon: Scaling },
   { id: 'pocketComp', name: 'Pocket Comp', category: 'MOBILE POCKET', description: 'One-knob vocal compressor.', icon: Sliders },
   { id: 'pocketEQ', name: 'Pocket EQ', category: 'MOBILE POCKET', description: 'Simple 3-Band Equalizer.', icon: Activity },
   { id: 'pocketDrive', name: 'Pocket Drive', category: 'MOBILE POCKET', description: 'Instant warmth and saturation.', icon: Zap },
