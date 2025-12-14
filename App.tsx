@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette, Activity, FolderOpen, Wand2, Copy, ArrowLeftRight, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed } from 'lucide-react';
+import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette, Activity, FolderOpen, Wand2, Copy, ArrowLeftRight, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, GripVertical } from 'lucide-react';
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
 import { audioEngine } from './services/AudioEngine';
@@ -170,6 +170,27 @@ export default function App() {
   const dragStartXRef = useRef<number>(0);
   const dragOriginalStartTimeRef = useRef<number>(0);
   
+  // Resize State
+  const [resizingState, setResizingState] = useState<{
+      isResizing: boolean;
+      direction: 'left' | 'right' | null;
+      clipId: string | null;
+      trackId: string | null;
+      initialX: number;
+      initialStartTime: number;
+      initialDuration: number;
+      initialOffset: number;
+  }>({
+      isResizing: false,
+      direction: null,
+      clipId: null,
+      trackId: null,
+      initialX: 0,
+      initialStartTime: 0,
+      initialDuration: 0,
+      initialOffset: 0
+  });
+
   // Scrubbing Ref (to hold the time while dragging without re-renders lagging)
   const currentScrubTimeRef = useRef<number | null>(null);
 
@@ -769,7 +790,7 @@ export default function App() {
   };
 
   // --- UI Interactions ---
-  const handleClipMouseDown = (e: React.MouseEvent, trackId: string, clipId: string) => {
+  const handleClipMouseDown = (e: React.MouseEvent, trackId: string, clipId: string, action: 'move' | 'resize-left' | 'resize-right') => {
       if (e.button !== 0 || activeTool === 'split') return; 
       e.stopPropagation(); e.preventDefault();
       
@@ -777,24 +798,36 @@ export default function App() {
       const clip = track?.clips.find(c => c.id === clipId);
       if (!track || !clip) return;
 
-      // 1. Calcular Limites de Colisão
-      // Pega todos os clipes dessa faixa, exceto o que estamos movendo
-      const otherClips = track.clips.filter(c => c.id !== clipId).sort((a, b) => a.startTime - b.startTime);
-      
-      // Encontra o clip imediatamente anterior
-      const prevClip = otherClips.filter(c => c.startTime + c.duration <= clip.startTime).pop();
-      // Encontra o clip imediatamente posterior
-      const nextClip = otherClips.find(c => c.startTime >= clip.startTime + clip.duration);
+      setSelectedTrackId(trackId); 
+      setSelectedClipId(clipId);
 
-      const minTime = prevClip ? prevClip.startTime + prevClip.duration : 0;
-      const maxTime = nextClip ? nextClip.startTime - clip.duration : Infinity;
+      if (action === 'move') {
+          // 1. Calcular Limites de Colisão
+          const otherClips = track.clips.filter(c => c.id !== clipId).sort((a, b) => a.startTime - b.startTime);
+          const prevClip = otherClips.filter(c => c.startTime + c.duration <= clip.startTime).pop();
+          const nextClip = otherClips.find(c => c.startTime >= clip.startTime + clip.duration);
 
-      dragConstraintsRef.current = { min: minTime, max: maxTime };
+          const minTime = prevClip ? prevClip.startTime + prevClip.duration : 0;
+          const maxTime = nextClip ? nextClip.startTime - clip.duration : Infinity;
 
-      setDraggingClipId(clipId); setDraggingTrackId(trackId);
-      dragStartXRef.current = e.clientX; 
-      dragOriginalStartTimeRef.current = clip.startTime;
-      setSelectedTrackId(trackId); setSelectedClipId(clipId);
+          dragConstraintsRef.current = { min: minTime, max: maxTime };
+
+          setDraggingClipId(clipId); setDraggingTrackId(trackId);
+          dragStartXRef.current = e.clientX; 
+          dragOriginalStartTimeRef.current = clip.startTime;
+      } else {
+          // RESIZING
+          setResizingState({
+              isResizing: true,
+              direction: action === 'resize-left' ? 'left' : 'right',
+              clipId,
+              trackId,
+              initialX: e.clientX,
+              initialStartTime: clip.startTime,
+              initialDuration: clip.duration,
+              initialOffset: clip.audioOffset
+          });
+      }
   };
 
   useEffect(() => {
@@ -848,7 +881,79 @@ export default function App() {
               return; 
           }
 
-          // --- LOGICA DE ARRASTO COM COLISÃO ---
+          // --- LOGIC: RESIZING ---
+          if (resizingState.isResizing && resizingState.trackId && resizingState.clipId) {
+              const deltaPixels = e.clientX - resizingState.initialX;
+              const deltaSeconds = deltaPixels / pixelsPerSecond;
+              
+              setTracks(prev => prev.map(trk => {
+                  if (trk.id !== resizingState.trackId) return trk;
+                  
+                  return {
+                      ...trk,
+                      clips: trk.clips.map(c => {
+                          if (c.id !== resizingState.clipId) return c;
+                          
+                          const maxDuration = c.buffer ? c.buffer.duration : c.duration;
+                          let newClip = { ...c };
+
+                          if (resizingState.direction === 'right') {
+                              // Change Duration
+                              let newDuration = resizingState.initialDuration + deltaSeconds;
+                              
+                              // Constraints
+                              if (newDuration < 0.1) newDuration = 0.1;
+                              if (newDuration + c.audioOffset > maxDuration) newDuration = maxDuration - c.audioOffset;
+                              
+                              // Snap (Right Edge)
+                              if (audioState.snapToGrid) {
+                                  const spb = 60 / audioState.bpm;
+                                  const targetEnd = c.startTime + newDuration;
+                                  const snappedEnd = Math.round(targetEnd / (spb/4)) * (spb/4);
+                                  newDuration = snappedEnd - c.startTime;
+                              }
+
+                              newClip.duration = Math.max(0.1, newDuration);
+                          } 
+                          else if (resizingState.direction === 'left') {
+                              // Change StartTime, Duration AND Offset
+                              let newStartTime = resizingState.initialStartTime + deltaSeconds;
+                              
+                              // Snap (Left Edge)
+                              if (audioState.snapToGrid) {
+                                  const spb = 60 / audioState.bpm;
+                                  newStartTime = Math.round(newStartTime / (spb/4)) * (spb/4);
+                              }
+                              
+                              const timeDiff = newStartTime - resizingState.initialStartTime;
+                              let newDuration = resizingState.initialDuration - timeDiff;
+                              let newOffset = resizingState.initialOffset + timeDiff;
+
+                              // Constraints
+                              if (newOffset < 0) {
+                                  // Can't go before audio start
+                                  newOffset = 0;
+                                  newStartTime = resizingState.initialStartTime - resizingState.initialOffset; // adjust start time
+                                  newDuration = resizingState.initialDuration + resizingState.initialOffset;
+                              }
+                              if (newDuration < 0.1) {
+                                  newDuration = 0.1;
+                                  newStartTime = (resizingState.initialStartTime + resizingState.initialDuration) - 0.1;
+                                  newOffset = (resizingState.initialOffset + resizingState.initialDuration) - 0.1;
+                              }
+
+                              newClip.startTime = newStartTime;
+                              newClip.duration = newDuration;
+                              newClip.audioOffset = newOffset;
+                          }
+                          return newClip;
+                      })
+                  };
+              }));
+              return;
+          }
+
+          // --- LOGICA DE ARRASTO COM COLISÃO (MOVING) ---
           if (draggingClipId && draggingTrackId && activeTool === 'cursor') {
               const deltaX = e.clientX - dragStartXRef.current;
               const deltaSeconds = deltaX / pixelsPerSecond;
@@ -887,6 +992,20 @@ export default function App() {
           isDraggingLoopEndRef.current = false; 
           isCreatingLoopRef.current = false;
           
+          // Reset Resizing
+          if (resizingState.isResizing) {
+              setResizingState({
+                  isResizing: false,
+                  direction: null,
+                  clipId: null,
+                  trackId: null,
+                  initialX: 0,
+                  initialStartTime: 0,
+                  initialDuration: 0,
+                  initialOffset: 0
+              });
+          }
+
           if (draggingClipId) {
               if (audioState.isPlaying && draggingTrackId) {
                    audioEngine.stopClip(draggingClipId);
@@ -903,7 +1022,7 @@ export default function App() {
       };
       window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp);
       return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
-  }, [draggingClipId, draggingTrackId, pixelsPerSecond, audioState.isPlaying, audioState.snapToGrid, audioState.bpm, tracks, togglePlay, audioState.loop.start, audioState.loop.end]);
+  }, [draggingClipId, draggingTrackId, pixelsPerSecond, audioState.isPlaying, audioState.snapToGrid, audioState.bpm, tracks, togglePlay, audioState.loop.start, audioState.loop.end, resizingState]);
 
   // --- Components ---
   const { Ruler, GridLines } = useMemo(() => {
@@ -1260,11 +1379,27 @@ export default function App() {
                                     {track.clips.map(clip => (
                                         <div 
                                             key={clip.id} 
-                                            onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id)} 
+                                            onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id, 'move')} 
                                             onContextMenu={(e) => handleContextMenu(e, track.id, clip.id)}
-                                            className={`absolute top-2 bottom-2 rounded-md overflow-hidden cursor-move border transition-all shadow-md ${selectedClipId === clip.id ? 'border-[var(--text-main)] bg-[var(--waveform-bg)] z-30 shadow-xl' : 'border-[var(--border-color)] bg-[var(--bg-element)] z-10 hover:border-[var(--text-muted)]'}`} 
+                                            className={`absolute top-2 bottom-2 rounded-md overflow-hidden border transition-all shadow-md group/clip ${selectedClipId === clip.id ? 'border-[var(--text-main)] bg-[var(--waveform-bg)] z-30 shadow-xl' : 'border-[var(--border-color)] bg-[var(--bg-element)] z-10 hover:border-[var(--text-muted)]'}`} 
                                             style={{ left: `${clip.startTime * pixelsPerSecond}px`, width: `${clip.duration * pixelsPerSecond}px` }}
                                         >
+                                            {/* Left Resize Handle */}
+                                            <div 
+                                                className="absolute top-0 bottom-0 left-0 w-3 cursor-ew-resize hover:bg-[var(--accent)]/50 z-20 opacity-0 group-hover/clip:opacity-100 transition-opacity flex items-center justify-center"
+                                                onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id, 'resize-left')}
+                                            >
+                                                <div className="w-[1px] h-4 bg-white/50"></div>
+                                            </div>
+
+                                            {/* Right Resize Handle */}
+                                            <div 
+                                                className="absolute top-0 bottom-0 right-0 w-3 cursor-ew-resize hover:bg-[var(--accent)]/50 z-20 opacity-0 group-hover/clip:opacity-100 transition-opacity flex items-center justify-center"
+                                                onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id, 'resize-right')}
+                                            >
+                                                <div className="w-[1px] h-4 bg-white/50"></div>
+                                            </div>
+
                                             <div className="w-full h-full opacity-80 pointer-events-none p-1"><Waveform buffer={clip.buffer} color={selectedClipId === clip.id ? "bg-[var(--waveform-wave)]" : "bg-[var(--text-muted)]"} start={clip.audioOffset} duration={clip.duration} /></div>
                                             <div className="absolute top-0 left-0 w-full px-2 py-0.5 bg-gradient-to-b from-black/50 to-transparent text-[9px] font-bold text-white truncate pointer-events-none">{clip.name}</div>
                                         </div>

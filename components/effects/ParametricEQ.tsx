@@ -19,12 +19,12 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
-  // Estado local para interação (evita re-render do React durante arrasto)
+  // Estado local para interação
   const [selectedBandIndex, setSelectedBandIndex] = useState<number>(-1);
   const [hoverBandIndex, setHoverBandIndex] = useState<number>(-1);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
 
-  // Refs para o Loop de Animação (acesso direto sem stale closures)
+  // Refs para o Loop de Animação
   const stateRef = useRef({
     settings,
     isDragging: false,
@@ -35,16 +35,18 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
   // Sincroniza refs com props
   useEffect(() => {
     stateRef.current.settings = settings;
-    // Se o índice selecionado não existe mais (ex: deletado), reseta
     if (selectedBandIndex >= settings.bands.length) setSelectedBandIndex(-1);
   }, [settings, selectedBandIndex]);
 
   // --- Helpers Matemáticos (Escala Logarítmica) ---
-  const minLog = Math.log(20);
-  const maxLog = Math.log(20000);
+  const minFreq = 20;
+  const maxFreq = 20000;
+  const minLog = Math.log(minFreq);
+  const maxLog = Math.log(maxFreq);
   
   const getXFromFreq = (freq: number, w: number) => {
-    const valLog = Math.log(Math.max(20, Math.min(20000, freq)));
+    const safeFreq = Math.max(minFreq, Math.min(maxFreq, freq));
+    const valLog = Math.log(safeFreq);
     return ((valLog - minLog) / (maxLog - minLog)) * w;
   };
 
@@ -54,18 +56,21 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
   };
 
   const getYFromdB = (db: number, h: number) => {
-    // Range visual: +24dB a -24dB
-    const minDb = -24;
-    const maxDb = 24;
-    const norm = (db - minDb) / (maxDb - minDb);
-    return h - (norm * h);
+    // Range visual: +24dB a -24dB (Total 48dB)
+    const range = 48;
+    const center = 0; // meio da tela é 0dB
+    // 0dB deve estar em h/2
+    // +24dB em 0
+    // -24dB em h
+    const pixPerDb = h / range;
+    return (h / 2) - (db * pixPerDb);
   };
 
   const getdBFromY = (y: number, h: number) => {
-    const minDb = -24;
-    const maxDb = 24;
-    const norm = 1 - (y / h);
-    return minDb + (norm * (maxDb - minDb));
+    const range = 48;
+    const centerPix = h / 2;
+    const pixPerDb = h / range;
+    return (centerPix - y) / pixPerDb;
   };
 
   // --- Loop de Renderização (Canvas) ---
@@ -83,13 +88,23 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Resize dinâmico
-      if (canvas.width !== container.offsetWidth || canvas.height !== container.offsetHeight) {
-        canvas.width = container.offsetWidth;
-        canvas.height = container.offsetHeight;
+      // --- High DPI Scaling ---
+      const dpr = window.devicePixelRatio || 1;
+      const rect = container.getBoundingClientRect();
+      
+      // Define o tamanho interno do canvas para corresponder aos pixels físicos
+      if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        // Escala o contexto para que as coordenadas lógicas funcionem
+        ctx.scale(dpr, dpr);
       }
-      const w = canvas.width;
-      const h = canvas.height;
+      // Garante que o estilo CSS ocupe o espaço correto
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+
+      const w = rect.width;
+      const h = rect.height;
 
       // 1. Fundo Preto Absoluto
       ctx.fillStyle = '#000000';
@@ -108,88 +123,129 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
       freqs.forEach((f, i) => {
         const x = getXFromFreq(f, w);
         ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, h);
+        ctx.moveTo(x + 0.5, 0); // +0.5 para linhas nítidas
+        ctx.lineTo(x + 0.5, h);
         ctx.stroke();
         ctx.fillText(labels[i], x, h - 6);
       });
 
-      // Linha 0dB
-      const yZero = getYFromdB(0, h);
-      ctx.beginPath();
-      ctx.strokeStyle = '#444';
-      ctx.moveTo(0, yZero);
-      ctx.lineTo(w, yZero);
-      ctx.stroke();
+      // Linhas dB
+      const dBs = [12, 0, -12];
+      dBs.forEach(db => {
+          const y = getYFromdB(db, h);
+          ctx.beginPath();
+          ctx.strokeStyle = db === 0 ? '#555' : '#222';
+          ctx.moveTo(0, y + 0.5);
+          ctx.lineTo(w, y + 0.5);
+          ctx.stroke();
+      });
 
-      // 3. Espectro (RTA)
+      // 3. Espectro (RTA) - Suavizado
       if (analyser) {
         analyser.getByteFrequencyData(dataArray);
         ctx.beginPath();
         ctx.moveTo(0, h);
         
-        // Desenha espectro logarítmico aproximado
-        for (let x = 0; x < w; x += 3) {
+        // Desenha com menos pontos para suavizar, interpolando
+        for (let x = 0; x < w; x += 2) {
            const f = getFreqFromX(x, w);
-           // Mapeia freq para índice FFT linear
            const idx = Math.min(bufferLength - 1, Math.floor((f / 22050) * bufferLength));
            const val = dataArray[idx] || 0;
-           const y = h - ((val / 255) * h * 0.9);
+           const y = h - ((val / 255) * h * 0.95);
            ctx.lineTo(x, y);
         }
         ctx.lineTo(w, h);
-        ctx.fillStyle = "rgba(255, 255, 255, 0.1)"; // Branco sutil
+        ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
         ctx.fill();
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+        ctx.lineWidth = 1;
         ctx.stroke();
       }
 
-      // 4. Curva de EQ (Simulada visualmente)
+      // 4. Curva de EQ (Alta Resolução)
       const { bands } = stateRef.current.settings;
-      if (bands.length > 0) {
-        ctx.beginPath();
-        ctx.moveTo(0, yZero);
-        
-        // Simulação simples da curva somada
-        for (let x = 0; x < w; x+=4) {
-             const f = getFreqFromX(x, w);
-             let totalDb = 0;
-             
-             // Somatório básico de influência das bandas (Bell curves aproximadas)
-             for (const b of bands) {
-                if (b.type === 'lowpass' && f > b.freq) totalDb -= 24 * Math.log2(f/b.freq); 
-                else if (b.type === 'highpass' && f < b.freq) totalDb -= 24 * Math.log2(b.freq/f);
-                else if (b.type === 'peaking' || !b.type) {
-                    // Bell curve simplificada
-                    const bandwidth = b.freq / (b.q || 1);
-                    const diff = Math.abs(f - b.freq);
-                    if (diff < bandwidth * 4) {
-                        const factor = 1 - (diff / (bandwidth * 4));
-                        totalDb += b.gain * Math.pow(factor, 2); // Falloff quadrático
-                    }
-                } else if (b.type === 'lowshelf' && f < b.freq) totalDb += b.gain;
-                else if (b.type === 'highshelf' && f > b.freq) totalDb += b.gain;
-             }
-             
-             const y = getYFromdB(totalDb, h);
-             ctx.lineTo(x, y);
-        }
-        
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = "#e6c200"; // Dourado
-        ctx.shadowColor = "#e6c200";
-        ctx.shadowBlur = 10;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
+      
+      const yZero = getYFromdB(0, h);
+      
+      ctx.beginPath();
+      ctx.moveTo(0, yZero);
+      
+      // Renderiza pixel a pixel para eliminar triangulação
+      for (let x = 0; x < w; x++) {
+           const f = getFreqFromX(x, w);
+           let totalDb = 0;
+           
+           for (const b of bands) {
+              const fRatio = f / b.freq;
+              const logRatio = Math.log2(fRatio);
 
-        // Preenchimento abaixo da curva
-        ctx.lineTo(w, h);
-        ctx.lineTo(0, h);
-        ctx.fillStyle = "rgba(230, 194, 0, 0.05)";
-        ctx.fill();
+              if (b.type === 'peaking') {
+                  // Curva Gaussiana Logarítmica (Simula filtro Bell real)
+                  // Q alto = banda estreita.
+                  // A fórmula empírica para visualização:
+                  const bandwidth = 1 / (b.q || 1); 
+                  // Usamos uma gaussiana modificada para simular o Bell Filter
+                  const exponent = -Math.pow(logRatio / bandwidth, 2);
+                  totalDb += b.gain * Math.exp(exponent);
+              } 
+              else if (b.type === 'lowpass') {
+                  // Slope de 12dB/octave suavizado
+                  if (f > b.freq) {
+                      // joelho suave
+                      totalDb -= 12 * logRatio; 
+                  }
+              }
+              else if (b.type === 'highpass') {
+                  if (f < b.freq) {
+                      totalDb -= 12 * Math.log2(b.freq / f);
+                  }
+              }
+              else if (b.type === 'lowshelf') {
+                  // Sigmoid para Shelf
+                  // Transição suave em torno da freq
+                  // Aproximação usando atan
+                  const slope = Math.atan(-logRatio * 2) / (Math.PI / 2); // -1 a 1 invertido
+                  // Queremos gain total abaixo, 0 acima.
+                  // Em logRatio negativo (f < freq), slope é positivo -> gain.
+                  const factor = (slope + 1) / 2; // 0 a 1
+                  totalDb += b.gain * factor;
+              }
+              else if (b.type === 'highshelf') {
+                  const slope = Math.atan(logRatio * 2) / (Math.PI / 2);
+                  const factor = (slope + 1) / 2;
+                  totalDb += b.gain * factor;
+              }
+              else if (b.type === 'notch') {
+                   const bandwidth = 0.5 / (b.q || 1);
+                   const exponent = -Math.pow(logRatio / bandwidth, 2);
+                   // Notch remove tudo (-inf), visualmente limitamos a -24dB para o desenho
+                   totalDb -= 48 * Math.exp(exponent);
+              }
+           }
+           
+           // Clamp visual para não sair da tela absurdamente
+           if (totalDb > 30) totalDb = 30;
+           if (totalDb < -30) totalDb = -30;
+
+           const y = getYFromdB(totalDb, h);
+           ctx.lineTo(x, y);
       }
+      
+      ctx.lineWidth = 2.5; // Linha um pouco mais grossa
+      ctx.strokeStyle = "#e6c200";
+      ctx.lineJoin = 'round'; // Juntas redondas para suavidade
+      ctx.shadowColor = "rgba(230, 194, 0, 0.5)";
+      ctx.shadowBlur = 15;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
 
-      // 5. Nós (Bolinhas)
+      // Preenchimento
+      ctx.lineTo(w, h);
+      ctx.lineTo(0, h);
+      ctx.fillStyle = "rgba(230, 194, 0, 0.05)";
+      ctx.fill();
+
+      // 5. Nós (Handles)
       bands.forEach((b, i) => {
          const x = getXFromFreq(b.freq, w);
          const y = getYFromdB(b.gain, h);
@@ -201,25 +257,35 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
              ctx.beginPath();
              ctx.moveTo(x, y);
              ctx.lineTo(x, yZero);
-             ctx.strokeStyle = "rgba(230, 194, 0, 0.3)";
-             ctx.setLineDash([2, 2]);
+             ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+             ctx.lineWidth = 1;
+             ctx.setLineDash([3, 3]);
              ctx.stroke();
              ctx.setLineDash([]);
          }
 
-         // Círculo
+         // Círculo Externo (Glow)
+         if (isSelected) {
+             ctx.beginPath();
+             ctx.arc(x, y, 12, 0, Math.PI * 2);
+             ctx.fillStyle = "rgba(230, 194, 0, 0.2)";
+             ctx.fill();
+         }
+
+         // Círculo Principal
          ctx.beginPath();
-         ctx.arc(x, y, isSelected ? 8 : 6, 0, Math.PI * 2);
-         ctx.fillStyle = isSelected ? "#e6c200" : (isHover ? "#fff" : "#555");
-         ctx.shadowBlur = isSelected ? 15 : 0;
-         ctx.shadowColor = "#e6c200";
+         ctx.arc(x, y, isSelected ? 6 : 5, 0, Math.PI * 2);
+         ctx.fillStyle = isSelected ? "#e6c200" : (isHover ? "#fff" : "#888");
+         ctx.strokeStyle = "#000";
+         ctx.lineWidth = 2;
          ctx.fill();
+         ctx.stroke();
          
          // Número
-         if (isSelected) {
-            ctx.fillStyle = "#000";
-            ctx.font = "bold 9px monospace";
-            ctx.fillText((i+1).toString(), x, y + 3);
+         if (isSelected || isHover) {
+            ctx.fillStyle = isSelected ? "#e6c200" : "#aaa";
+            ctx.font = "bold 10px sans-serif";
+            ctx.fillText((i+1).toString(), x, y - 12);
          }
       });
 
@@ -232,13 +298,12 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
 
   // --- Handlers de Interação ---
   const handleInteraction = (type: 'down' | 'move' | 'up', e: React.MouseEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    const w = canvas.width;
-    const h = canvas.height;
+    const w = rect.width;
+    const h = rect.height;
 
     const { bands } = stateRef.current.settings;
 
@@ -246,47 +311,55 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
         const now = Date.now();
         // Double Tap: Criar Banda
         if (now - stateRef.current.lastTap < 300) {
-            const freq = getFreqFromX(x, w);
-            const gain = getdBFromY(y, h);
-            const newBand: FilterBand = { freq, gain, q: 1, type: 'peaking' };
-            const newSettings = { ...stateRef.current.settings, bands: [...bands, newBand] };
-            onChange(newSettings);
-            setSelectedBandIndex(newSettings.bands.length - 1);
+            if (bands.length < 8) { // Limite de 8 bandas
+                const freq = getFreqFromX(x, w);
+                const gain = getdBFromY(y, h);
+                const newBand: FilterBand = { freq, gain, q: 1, type: 'peaking' };
+                const newSettings = { ...stateRef.current.settings, bands: [...bands, newBand] };
+                onChange(newSettings);
+                setSelectedBandIndex(newSettings.bands.length - 1);
+            }
             return;
         }
         stateRef.current.lastTap = now;
 
-        // Hit Test
+        // Hit Test (Prioriza bandas selecionadas ou próximas)
         let hitIdx = -1;
-        let minDist = 30;
-        bands.forEach((b, i) => {
+        let minDist = 20; // Raio de clique em pixels
+        
+        // Check reverso para pegar as bandas "de cima" primeiro visualmente
+        for (let i = bands.length - 1; i >= 0; i--) {
+            const b = bands[i];
             const bx = getXFromFreq(b.freq, w);
             const by = getYFromdB(b.gain, h);
             const dist = Math.sqrt((x-bx)**2 + (y-by)**2);
             if (dist < minDist) {
                 minDist = dist;
                 hitIdx = i;
+                break; // Encontrou, para
             }
-        });
+        }
 
         if (hitIdx !== -1) {
             stateRef.current.isDragging = true;
             stateRef.current.dragIndex = hitIdx;
             setSelectedBandIndex(hitIdx);
         } else {
+            // Clicou no vazio, deseleciona
             setSelectedBandIndex(-1);
         }
 
     } else if (type === 'move') {
         // Hover Logic
         let hitIdx = -1;
-        let minDist = 30;
-        bands.forEach((b, i) => {
+        let minDist = 20;
+        for (let i = bands.length - 1; i >= 0; i--) {
+            const b = bands[i];
             const bx = getXFromFreq(b.freq, w);
             const by = getYFromdB(b.gain, h);
             const dist = Math.sqrt((x-bx)**2 + (y-by)**2);
-            if (dist < minDist) { minDist = dist; hitIdx = i; }
-        });
+            if (dist < minDist) { minDist = dist; hitIdx = i; break; }
+        }
         setHoverBandIndex(hitIdx);
 
         // Drag Logic
@@ -295,20 +368,26 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
             const freq = getFreqFromX(x, w);
             let gain = getdBFromY(y, h);
             
-            // Filtros de corte (Pass) geralmente não usam ganho
-            const bandType = bands[idx].type;
-            if (bandType === 'lowpass' || bandType === 'highpass') gain = 0;
+            // Filtros de corte (Pass) e Notch tem ganho fixo ou irrelevante para a posição Y em alguns UX,
+            // mas aqui permitimos mover livremente, exceto se quisermos travar o Y.
+            // Opcional: Travar Y em 0 para LowPass/HighPass se desejar comportamento padrão
+            // if (bands[idx].type === 'lowpass' || bands[idx].type === 'highpass') gain = 0; 
+
+            // Clamp Frequency
+            const safeFreq = Math.max(20, Math.min(20000, freq));
+            // Clamp Gain
+            const safeGain = Math.max(-24, Math.min(24, gain));
 
             const newBands = [...bands];
-            newBands[idx] = { ...newBands[idx], freq, gain };
+            newBands[idx] = { ...newBands[idx], freq: safeFreq, gain: safeGain };
             
             onChange({ ...stateRef.current.settings, bands: newBands });
 
             // Tooltip
             setTooltip({
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top,
-                text: `${Math.round(freq)} Hz | ${gain > 0 ? '+' : ''}${gain.toFixed(1)} dB`
+                x: x,
+                y: y,
+                text: `${Math.round(safeFreq)} Hz | ${safeGain > 0 ? '+' : ''}${safeGain.toFixed(1)} dB`
             });
         }
     } else if (type === 'up') {
@@ -320,16 +399,14 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
 
   const selectedBand = selectedBandIndex !== -1 ? settings.bands[selectedBandIndex] : null;
 
-  // CSS Styles
-  const css = `
-    .desert-slider { -webkit-appearance: none; width: 100%; height: 4px; background: #333; border-radius: 2px; outline: none; }
-    .desert-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #e6c200; border-radius: 50%; border: 2px solid #000; cursor: pointer; }
-    .desert-select { background: #000; color: #e6c200; border: 1px solid #444; padding: 4px; font-size: 11px; outline: none; }
-  `;
-
   return (
-    <div className="flex flex-col w-full h-full bg-black text-[#f0f0f0] font-mono select-none border border-[#333]">
-      <style>{css}</style>
+    <div className="flex flex-col w-full h-full bg-black text-[#f0f0f0] font-sans select-none border border-[#333]">
+      <style>{`
+        .desert-slider { -webkit-appearance: none; width: 100%; height: 4px; background: #333; border-radius: 2px; outline: none; }
+        .desert-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #e6c200; border-radius: 50%; border: 2px solid #000; cursor: pointer; }
+        .desert-select { background: #000; color: #e6c200; border: 1px solid #444; padding: 4px; font-size: 11px; outline: none; }
+        .desert-select option { background: #111; color: #fff; }
+      `}</style>
       
       {/* Visualizer Area */}
       <div ref={containerRef} className="flex-1 relative cursor-crosshair overflow-hidden">
@@ -342,45 +419,48 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
             onMouseLeave={(e) => handleInteraction('up', e)}
         />
         {tooltip && (
-            <div className="absolute bg-black border border-[#e6c200] text-[#e6c200] text-xs px-2 py-1 pointer-events-none transform -translate-y-full"
-                 style={{ left: tooltip.x, top: tooltip.y - 10 }}>
+            <div className="absolute bg-black/90 border border-[#e6c200] text-[#e6c200] text-[10px] font-mono px-2 py-1 pointer-events-none transform -translate-y-full -translate-x-1/2 rounded shadow-lg z-50 whitespace-nowrap"
+                 style={{ left: tooltip.x, top: tooltip.y - 15 }}>
                 {tooltip.text}
             </div>
         )}
         {settings.bands.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center text-[#444] text-xs pointer-events-none">
-                DOUBLE CLICK TO ADD BAND
+            <div className="absolute inset-0 flex items-center justify-center text-[#444] text-xs pointer-events-none uppercase tracking-widest">
+                Double click to add band
             </div>
         )}
       </div>
 
       {/* Controls Panel */}
-      <div className="bg-[#111] p-3 border-t-2 border-[#e6c200] h-[160px] grid grid-cols-3 gap-4 shrink-0">
+      <div className="bg-[#0a0a0a] p-3 border-t border-[#333] h-[140px] grid grid-cols-1 md:grid-cols-3 gap-6 shrink-0 relative z-10">
          
          {/* Coluna 1: Edição da Banda */}
-         <div className="col-span-2 border-r border-[#333] pr-4 flex flex-col gap-2">
+         <div className="col-span-2 flex flex-col gap-2">
             {selectedBand ? (
                 <>
-                    <div className="flex justify-between items-center mb-1">
-                        <span className="text-[#e6c200] font-bold text-xs uppercase">Band {selectedBandIndex + 1}</span>
+                    <div className="flex justify-between items-center border-b border-[#222] pb-1">
+                        <span className="text-[#e6c200] font-bold text-xs uppercase tracking-wider flex items-center gap-2">
+                            <div className="w-2 h-2 bg-[#e6c200] rounded-full"></div>
+                            Band {selectedBandIndex + 1}
+                        </span>
                         <button 
                            onClick={() => {
                                const newBands = settings.bands.filter((_, i) => i !== selectedBandIndex);
                                onChange({ ...settings, bands: newBands });
                                setSelectedBandIndex(-1);
                            }}
-                           className="text-[#f55] text-[10px] hover:text-red-400 font-bold uppercase"
+                           className="text-[#f55] text-[9px] hover:text-red-400 font-bold uppercase tracking-widest hover:underline"
                         >
-                            Delete
+                            DELETE
                         </button>
                     </div>
                     
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-4 gap-4 items-end">
                         {/* Type */}
-                        <div className="flex flex-col">
-                            <label className="text-[9px] text-[#666] uppercase">Type</label>
+                        <div className="flex flex-col gap-1">
+                            <label className="text-[9px] text-[#666] uppercase font-bold">TYPE</label>
                             <select 
-                                className="desert-select"
+                                className="desert-select w-full"
                                 value={selectedBand.type}
                                 onChange={(e) => {
                                     const newBands = [...settings.bands];
@@ -397,17 +477,20 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
                             </select>
                         </div>
                         
-                        {/* Freq */}
-                        <div className="flex flex-col">
-                             <label className="text-[9px] text-[#666] uppercase">Freq</label>
-                             <div className="text-[#e6c200] text-xs border border-[#333] px-2 py-1 bg-black">
+                        {/* Freq Display (Read only) */}
+                        <div className="flex flex-col gap-1">
+                             <label className="text-[9px] text-[#666] uppercase font-bold">FREQ</label>
+                             <div className="text-[#e6c200] text-xs font-mono border border-[#333] px-2 py-1 bg-black rounded">
                                 {Math.round(selectedBand.freq)} Hz
                              </div>
                         </div>
 
                         {/* Q */}
-                        <div className="flex flex-col">
-                            <label className="text-[9px] text-[#666] uppercase">Q (Width)</label>
+                        <div className="flex flex-col gap-1 col-span-2">
+                            <div className="flex justify-between">
+                                <label className="text-[9px] text-[#666] uppercase font-bold">Q (WIDTH)</label>
+                                <span className="text-[9px] text-[#888]">{selectedBand.q.toFixed(2)}</span>
+                            </div>
                             <input 
                                 type="range" className="desert-slider" min="0.1" max="10" step="0.1"
                                 value={selectedBand.q}
@@ -421,20 +504,20 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
                     </div>
                 </>
             ) : (
-                <div className="flex items-center justify-center h-full text-[#444] text-xs uppercase">
-                    Select a node to edit
+                <div className="flex items-center justify-center h-full text-[#333] text-[10px] uppercase font-bold tracking-widest border border-[#222] border-dashed rounded">
+                    Select a node to edit parameters
                 </div>
             )}
          </div>
 
-         {/* Coluna 2: Global Controls (Reverb & Preamp) */}
-         <div className="flex flex-col gap-3 justify-center">
+         {/* Coluna 2: Global Controls */}
+         <div className="border-l border-[#222] pl-6 flex flex-col justify-center gap-4">
              
              {/* Preamp */}
              <div className="flex flex-col gap-1">
-                 <div className="flex justify-between">
-                    <label className="text-[9px] text-[#888] uppercase font-bold">Output Gain</label>
-                    <span className="text-[10px] text-[#e6c200]">{settings.preamp > 0 ? '+' : ''}{settings.preamp}dB</span>
+                 <div className="flex justify-between items-center">
+                    <label className="text-[9px] text-[#666] uppercase font-bold tracking-wider">OUTPUT GAIN</label>
+                    <span className="text-[9px] text-[#e6c200] font-mono">{settings.preamp > 0 ? '+' : ''}{settings.preamp}dB</span>
                  </div>
                  <input 
                     type="range" className="desert-slider" min="-12" max="12" step="0.1"
@@ -443,11 +526,11 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
                  />
              </div>
 
-             {/* Reverb (O PEDIDO ESPECIAL) */}
+             {/* Reverb */}
              <div className="flex flex-col gap-1">
-                 <div className="flex justify-between">
-                    <label className="text-[9px] text-[#888] uppercase font-bold">Reverb</label>
-                    <span className="text-[10px] text-[#e6c200]">{settings.reverb}%</span>
+                 <div className="flex justify-between items-center">
+                    <label className="text-[9px] text-[#666] uppercase font-bold tracking-wider">REVERB</label>
+                    <span className="text-[9px] text-[#e6c200] font-mono">{settings.reverb}%</span>
                  </div>
                  <input 
                     type="range" className="desert-slider" min="0" max="100" step="1"
