@@ -46,6 +46,7 @@ class AudioEngineService {
   private mediaStream: MediaStream | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
+  private recordingMimeType: string = 'audio/webm'; // Default fallback
   
   // Analyser específico para a gravação (Input Monitoring Visuals)
   public recordingAnalyser: AnalyserNode | null = null;
@@ -64,7 +65,6 @@ class AudioEngineService {
 
   constructor() {
     this.context = new (window.AudioContext || (window as any).webkitAudioContext)({
-      sampleRate: 44100,
       latencyHint: 'interactive'
     });
     this.masterGain = this.context.createGain();
@@ -1034,7 +1034,16 @@ class AudioEngineService {
   startRecording = async () => {
     this.audioChunks = [];
     try {
-        this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 } });
+        // MONO IS CRITICAL FOR MICROPHONES
+        // FORCE CHANNEL COUNT 1 TO AVOID PHASE ISSUES OR SILENT STEREO CHANNELS
+        this.mediaStream = await navigator.mediaDevices.getUserMedia({ 
+            audio: { 
+                echoCancellation: false, 
+                noiseSuppression: false, 
+                autoGainControl: false, 
+                channelCount: 1 
+            } 
+        });
         
         // Setup Live Analyser
         const source = this.context.createMediaStreamSource(this.mediaStream);
@@ -1043,7 +1052,19 @@ class AudioEngineService {
         this.recordingDataArray = new Uint8Array(this.recordingAnalyser.frequencyBinCount);
         source.connect(this.recordingAnalyser);
 
-        this.mediaRecorder = new MediaRecorder(this.mediaStream);
+        // Detect supported MimeType
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+            this.recordingMimeType = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+            this.recordingMimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            this.recordingMimeType = 'audio/mp4'; // Safari
+        } else {
+            this.recordingMimeType = ''; // Let browser choose default
+        }
+
+        const options = this.recordingMimeType ? { mimeType: this.recordingMimeType } : undefined;
+        this.mediaRecorder = new MediaRecorder(this.mediaStream, options);
         this.mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) this.audioChunks.push(e.data); };
         this.mediaRecorder.start();
     } catch (err) {
@@ -1074,11 +1095,12 @@ class AudioEngineService {
           }
 
           if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
-              resolve(new Blob([], { type: 'audio/webm' }));
+              resolve(new Blob([], { type: this.recordingMimeType || 'audio/webm' }));
               return;
           }
+          
           this.mediaRecorder.onstop = () => {
-              const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
+              const blob = new Blob(this.audioChunks, { type: this.recordingMimeType || 'audio/webm' });
               this.audioChunks = [];
               if (this.mediaStream) {
                   this.mediaStream.getTracks().forEach(track => track.stop());
