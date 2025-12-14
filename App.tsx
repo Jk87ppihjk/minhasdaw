@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette, Activity, FolderOpen, Wand2, Copy, ArrowLeftRight, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, GripVertical, Menu, PanelLeftClose, MoreVertical, Maximize, Minimize } from 'lucide-react';
+import { Play, Pause, Square, Mic, Music, Layers, Settings2, Trash2, Plus, ZoomIn, ZoomOut, Magnet, SlidersHorizontal, Scissors, PanelRightClose, MousePointer2, XCircle, Download, Save, ArrowLeft, Volume2, Disc, Repeat, Palette, Activity, FolderOpen, Wand2, Copy, ArrowLeftRight, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, GripVertical, Menu, PanelLeftClose, MoreVertical, Maximize, Minimize, Undo2, Redo2 } from 'lucide-react';
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
 import { audioEngine } from './services/AudioEngine';
@@ -13,6 +13,7 @@ import { CompressorEffect } from './components/effects/CompressorEffect';
 import { ReverbEffect } from './components/effects/ReverbEffect';
 import { TunerEffect } from './components/effects/TunerEffect';
 import { DistortionEffect } from './components/effects/DistortionEffect'; 
+import { useUndoRedo } from './hooks/useUndoRedo';
 
 // --- Constants ---
 const BASE_PX_PER_SEC = 50;
@@ -119,7 +120,10 @@ export default function App() {
   // State
   const [welcomeScreen, setWelcomeScreen] = useState(true);
   const [theme, setTheme] = useState<string>('dark');
-  const [tracks, setTracks] = useState<Track[]>([]);
+  
+  // Use Undo/Redo Hook for Tracks
+  const [tracks, setTracks, undoTracks, redoTracks, canUndo, canRedo] = useUndoRedo<Track[]>([]);
+  
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -288,8 +292,13 @@ export default function App() {
             effectiveVolume = 0;
         }
         audioEngine.setTrackVolume(track.id, effectiveVolume);
+        
+        // Re-apply effects if restored from Undo
+        if(audioState.isPlaying) {
+            audioEngine.updateTrackSettings(track);
+        }
     });
-  }, [tracks]);
+  }, [tracks, audioState.isPlaying]);
 
   // --- Project Management ---
   const saveProject = async () => {
@@ -688,14 +697,27 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+        
         if (e.code === 'Space') {
             e.preventDefault();
             togglePlay();
         }
+
+        // Undo: Ctrl+Z or Cmd+Z
+        if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ' && !e.shiftKey) {
+            e.preventDefault();
+            if(canUndo) undoTracks();
+        }
+
+        // Redo: Ctrl+Y or Ctrl+Shift+Z or Cmd+Shift+Z
+        if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyY' || (e.shiftKey && e.code === 'KeyZ'))) {
+            e.preventDefault();
+            if(canRedo) redoTracks();
+        }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay]);
+  }, [togglePlay, canUndo, canRedo, undoTracks, redoTracks]);
 
   // --- Play Loop Animation ---
   useEffect(() => {
@@ -1361,6 +1383,23 @@ export default function App() {
         {/* Right: Tools / Mixer Toggle */}
         <div className="flex items-center gap-3 justify-end w-auto md:w-1/4">
             <div className="hidden md:flex items-center gap-2">
+                {/* UNDO / REDO */}
+                <button 
+                    onClick={() => canUndo && undoTracks()} 
+                    className={`p-2 rounded text-[var(--text-muted)] transition-colors ${canUndo ? 'hover:text-[var(--text-main)] hover:bg-[var(--bg-element)]' : 'opacity-30 cursor-default'}`}
+                    title="Undo (Ctrl+Z)"
+                >
+                    <Undo2 className="w-5 h-5" />
+                </button>
+                <button 
+                    onClick={() => canRedo && redoTracks()} 
+                    className={`p-2 rounded text-[var(--text-muted)] transition-colors ${canRedo ? 'hover:text-[var(--text-main)] hover:bg-[var(--bg-element)]' : 'opacity-30 cursor-default'}`}
+                    title="Redo (Ctrl+Y)"
+                >
+                    <Redo2 className="w-5 h-5" />
+                </button>
+                <div className="h-6 w-[1px] bg-[var(--border-color)] mx-1"></div>
+
                 <button onClick={toggleFullScreen} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">
                     {isFullScreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
                 </button>
