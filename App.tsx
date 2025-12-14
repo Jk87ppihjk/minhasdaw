@@ -809,19 +809,28 @@ export default function App() {
   };
 
   // --- UI Interactions ---
-  const handleClipMouseDown = (e: React.MouseEvent, trackId: string, clipId: string, action: 'move' | 'resize-left' | 'resize-right') => {
-      if (e.button !== 0 || activeTool === 'split') return; 
-      e.stopPropagation(); e.preventDefault();
+
+  // Unified Start handler for Mouse and Touch
+  const handleClipInteractionStart = (e: React.MouseEvent | React.TouchEvent, trackId: string, clipId: string, action: 'move' | 'resize-left' | 'resize-right') => {
+      // Prevent default on touch to avoid scrolling while dragging
+      if (e.type === 'touchstart') {
+          // e.preventDefault(); // Note: React sometimes complains if this is not passive
+      } else {
+          // Mouse: check button
+          if ((e as React.MouseEvent).button !== 0) return;
+      }
       
+      e.stopPropagation(); 
+      if (activeTool === 'split') return;
+
+      const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+
       const track = tracks.find(t => t.id === trackId);
       const clip = track?.clips.find(c => c.id === clipId);
       if (!track || !clip) return;
 
       setSelectedTrackId(trackId); 
       setSelectedClipId(clipId);
-
-      // On Mobile/Tablet, touching a clip should switch context but not necessarily open the mixer immediately unless requested
-      // For editing comfort.
 
       if (action === 'move') {
           const otherClips = track.clips.filter(c => c.id !== clipId).sort((a, b) => a.startTime - b.startTime);
@@ -834,7 +843,7 @@ export default function App() {
           dragConstraintsRef.current = { min: minTime, max: maxTime };
 
           setDraggingClipId(clipId); setDraggingTrackId(trackId);
-          dragStartXRef.current = e.clientX; // Works for mouse, React handles normalization usually, but for touch requires different handling if not using PointerEvents
+          dragStartXRef.current = clientX; 
           dragOriginalStartTimeRef.current = clip.startTime;
       } else {
           setResizingState({
@@ -842,7 +851,7 @@ export default function App() {
               direction: action === 'resize-left' ? 'left' : 'right',
               clipId,
               trackId,
-              initialX: e.clientX,
+              initialX: clientX,
               initialStartTime: clip.startTime,
               initialDuration: clip.duration,
               initialOffset: clip.audioOffset
@@ -850,14 +859,16 @@ export default function App() {
       }
   };
 
-  // ... Mouse Move/Up Handlers (same logic) ...
+  // ... Mouse/Touch Move/Up Handlers ...
   useEffect(() => {
-      const handleMouseMove = (e: MouseEvent) => {
+      // Combined Move Logic
+      const handleMove = (clientX: number) => {
           if (!scrollContainerRef.current) return;
           const rect = scrollContainerRef.current.getBoundingClientRect();
-          const x = e.clientX - rect.left + scrollContainerRef.current.scrollLeft;
+          const x = clientX - rect.left + scrollContainerRef.current.scrollLeft;
           const t = Math.max(0, x / pixelsPerSecond);
 
+          // Loop Start Drag
           if (isDraggingLoopStartRef.current) { 
               let newStart = Math.min(t, audioState.loop.end - 0.1);
               if (audioState.snapToGrid) {
@@ -868,6 +879,7 @@ export default function App() {
               setAudioState(p => ({ ...p, loop: { ...p.loop, start: newStart, active: true } })); 
               return; 
           }
+          // Loop End Drag
           if (isDraggingLoopEndRef.current) { 
               let newEnd = Math.max(t, audioState.loop.start + 0.1);
               if (audioState.snapToGrid) {
@@ -879,6 +891,7 @@ export default function App() {
               return; 
           }
 
+          // Create Loop Drag
           if (isCreatingLoopRef.current) { 
             const s = Math.min(loopStartAnchorRef.current, t); 
             const end = Math.max(loopStartAnchorRef.current, t); 
@@ -886,6 +899,7 @@ export default function App() {
             return; 
           }
           
+          // Scrubbing
           if (isScrubbingRef.current) { 
               let scrubTime = t;
               if (audioState.snapToGrid) {
@@ -898,8 +912,9 @@ export default function App() {
               return; 
           }
 
+          // Resizing Clips
           if (resizingState.isResizing && resizingState.trackId && resizingState.clipId) {
-              const deltaPixels = e.clientX - resizingState.initialX;
+              const deltaPixels = clientX - resizingState.initialX;
               const deltaSeconds = deltaPixels / pixelsPerSecond;
               
               setTracks(prev => prev.map(trk => {
@@ -954,8 +969,9 @@ export default function App() {
               return;
           }
 
+          // Dragging Clips (Move)
           if (draggingClipId && draggingTrackId && activeTool === 'cursor') {
-              const deltaX = e.clientX - dragStartXRef.current;
+              const deltaX = clientX - dragStartXRef.current;
               const deltaSeconds = deltaX / pixelsPerSecond;
               let newStartTime = dragOriginalStartTimeRef.current + deltaSeconds;
               
@@ -972,7 +988,8 @@ export default function App() {
               }));
           }
       };
-      const handleMouseUp = () => {
+
+      const handleEnd = () => {
           if (isScrubbingRef.current) { 
               isScrubbingRef.current = false; 
               if (wasPlayingRef.current && currentScrubTimeRef.current !== null) {
@@ -1000,9 +1017,37 @@ export default function App() {
           }
           isDraggingTimelineRef.current = false;
       };
-      window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp);
-      return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
+
+      // Mouse Event Wrappers
+      const handleMouseMove = (e: MouseEvent) => handleMove(e.clientX);
+      const handleMouseUp = () => handleEnd();
+
+      // Touch Event Wrappers
+      const handleTouchMove = (e: TouchEvent) => {
+          if (isDraggingClipId || isResizingState.isResizing || isDraggingLoopStartRef.current || isDraggingLoopEndRef.current || isScrubbingRef.current) {
+              e.preventDefault(); // Prevent scrolling while interacting
+          }
+          handleMove(e.touches[0].clientX);
+      };
+      const handleTouchEnd = () => handleEnd();
+
+      // Listeners
+      window.addEventListener('mousemove', handleMouseMove); 
+      window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('touchmove', handleTouchMove, { passive: false }); // Passive false for preventDefault
+      window.addEventListener('touchend', handleTouchEnd);
+      
+      return () => { 
+          window.removeEventListener('mousemove', handleMouseMove); 
+          window.removeEventListener('mouseup', handleMouseUp);
+          window.removeEventListener('touchmove', handleTouchMove);
+          window.removeEventListener('touchend', handleTouchEnd);
+      };
   }, [draggingClipId, draggingTrackId, pixelsPerSecond, audioState.isPlaying, audioState.snapToGrid, audioState.bpm, tracks, togglePlay, audioState.loop.start, audioState.loop.end, resizingState]);
+  
+  // Helpers for useEffect dependecies to avoid stale state in closure
+  const isDraggingClipId = draggingClipId !== null;
+  const isResizingState = resizingState;
 
   // --- Components (Ruler) ---
   const { Ruler, GridLines } = useMemo(() => {
@@ -1318,10 +1363,16 @@ export default function App() {
                             {audioState.loop.active && (
                                 <>
                                     <div className="absolute top-0 h-full bg-[var(--accent)]/10 border-t-2 border-[var(--accent)] pointer-events-none" style={{ left: audioState.loop.start * pixelsPerSecond, width: (audioState.loop.end - audioState.loop.start) * pixelsPerSecond }} />
-                                    <div className="absolute top-0 h-6 w-4 -ml-2 cursor-ew-resize z-50 group loop-handle" style={{ left: audioState.loop.start * pixelsPerSecond }} onMouseDown={(e) => { e.stopPropagation(); isDraggingLoopStartRef.current = true; }}>
+                                    <div className="absolute top-0 h-6 w-4 -ml-2 cursor-ew-resize z-50 group loop-handle touch-none" style={{ left: audioState.loop.start * pixelsPerSecond }} 
+                                        onMouseDown={(e) => { e.stopPropagation(); isDraggingLoopStartRef.current = true; }}
+                                        onTouchStart={(e) => { e.stopPropagation(); isDraggingLoopStartRef.current = true; }}
+                                    >
                                         <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-[var(--accent)]"></div>
                                     </div>
-                                    <div className="absolute top-0 h-6 w-4 -ml-2 cursor-ew-resize z-50 group loop-handle" style={{ left: audioState.loop.end * pixelsPerSecond }} onMouseDown={(e) => { e.stopPropagation(); isDraggingLoopEndRef.current = true; }}>
+                                    <div className="absolute top-0 h-6 w-4 -ml-2 cursor-ew-resize z-50 group loop-handle touch-none" style={{ left: audioState.loop.end * pixelsPerSecond }} 
+                                        onMouseDown={(e) => { e.stopPropagation(); isDraggingLoopEndRef.current = true; }}
+                                        onTouchStart={(e) => { e.stopPropagation(); isDraggingLoopEndRef.current = true; }}
+                                    >
                                         <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-[var(--accent)]"></div>
                                     </div>
                                 </>
@@ -1335,13 +1386,20 @@ export default function App() {
                                     {track.clips.map(clip => (
                                         <div 
                                             key={clip.id} 
-                                            onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id, 'move')} 
+                                            onMouseDown={(e) => handleClipInteractionStart(e, track.id, clip.id, 'move')} 
+                                            onTouchStart={(e) => handleClipInteractionStart(e, track.id, clip.id, 'move')}
                                             onContextMenu={(e) => handleContextMenu(e, track.id, clip.id)}
-                                            className={`absolute top-2 bottom-2 rounded-md overflow-hidden border transition-all shadow-md group/clip ${selectedClipId === clip.id ? 'border-[var(--text-main)] bg-[var(--waveform-bg)] z-30 shadow-xl' : 'border-[var(--border-color)] bg-[var(--bg-element)] z-10 hover:border-[var(--text-muted)]'}`} 
+                                            className={`absolute top-2 bottom-2 rounded-md overflow-hidden border transition-all shadow-md group/clip touch-none ${selectedClipId === clip.id ? 'border-[var(--text-main)] bg-[var(--waveform-bg)] z-30 shadow-xl' : 'border-[var(--border-color)] bg-[var(--bg-element)] z-10 hover:border-[var(--text-muted)]'}`} 
                                             style={{ left: `${clip.startTime * pixelsPerSecond}px`, width: `${clip.duration * pixelsPerSecond}px` }}
                                         >
-                                            <div className="absolute top-0 bottom-0 left-0 w-4 cursor-ew-resize hover:bg-[var(--accent)]/50 z-20 opacity-0 group-hover/clip:opacity-100 transition-opacity flex items-center justify-center" onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id, 'resize-left')}></div>
-                                            <div className="absolute top-0 bottom-0 right-0 w-4 cursor-ew-resize hover:bg-[var(--accent)]/50 z-20 opacity-0 group-hover/clip:opacity-100 transition-opacity flex items-center justify-center" onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id, 'resize-right')}></div>
+                                            <div className="absolute top-0 bottom-0 left-0 w-8 cursor-ew-resize hover:bg-[var(--accent)]/50 z-20 opacity-0 group-hover/clip:opacity-100 transition-opacity flex items-center justify-center touch-none" 
+                                                onMouseDown={(e) => handleClipInteractionStart(e, track.id, clip.id, 'resize-left')}
+                                                onTouchStart={(e) => handleClipInteractionStart(e, track.id, clip.id, 'resize-left')}
+                                            ></div>
+                                            <div className="absolute top-0 bottom-0 right-0 w-8 cursor-ew-resize hover:bg-[var(--accent)]/50 z-20 opacity-0 group-hover/clip:opacity-100 transition-opacity flex items-center justify-center touch-none" 
+                                                onMouseDown={(e) => handleClipInteractionStart(e, track.id, clip.id, 'resize-right')}
+                                                onTouchStart={(e) => handleClipInteractionStart(e, track.id, clip.id, 'resize-right')}
+                                            ></div>
                                             <div className="w-full h-full opacity-80 pointer-events-none p-1"><Waveform buffer={clip.buffer} color={selectedClipId === clip.id ? "bg-[var(--waveform-wave)]" : "bg-[var(--text-muted)]"} start={clip.audioOffset} duration={clip.duration} /></div>
                                             <div className="absolute top-0 left-0 w-full px-2 py-0.5 bg-gradient-to-b from-black/50 to-transparent text-[9px] font-bold text-white truncate pointer-events-none">{clip.name}</div>
                                         </div>
