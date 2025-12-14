@@ -1206,7 +1206,7 @@ export default function App() {
         <div className="flex items-center gap-3 w-auto md:w-1/4">
           <button 
              onClick={() => setIsTrackListOpen(!isTrackListOpen)} 
-             className="md:hidden p-2 text-[var(--text-muted)] hover:text-[var(--text-main)]"
+             className="lg:hidden p-2 text-[var(--text-muted)] hover:text-[var(--text-main)]"
           >
              {isTrackListOpen ? <PanelLeftClose className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
