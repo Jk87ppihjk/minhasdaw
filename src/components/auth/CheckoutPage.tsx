@@ -20,11 +20,11 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                 return;
             }
 
-            // A chave pública deve vir do .env via vite.config.ts
+            // Chave pública segura injetada pelo Vite
             const publicKey = process.env.MP_PUBLIC_KEY;
 
             if (!publicKey) {
-                console.error("ERRO CRÍTICO: MP_PUBLIC_KEY não definida no .env");
+                console.error("ERRO: MP_PUBLIC_KEY ausente. Verifique o .env");
                 setPaymentStatus('error');
                 return;
             }
@@ -63,6 +63,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                         setPaymentStatus('processing');
                         
                         try {
+                            // Monta o payload para o backend
                             const payload = {
                                 transaction_amount: formData.transaction_amount,
                                 description: "Monochrome Studio Pro",
@@ -105,7 +106,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
             };
 
             const container = document.getElementById('paymentBrick_container');
-            if (container) container.innerHTML = ''; // Limpa para evitar duplicação
+            if (container) container.innerHTML = ''; // Limpa container anterior
 
             await bricksBuilder.create("payment", "paymentBrick_container", settings);
         };
@@ -114,7 +115,6 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
         return () => clearTimeout(timer);
     }, [user]);
 
-    // Função de teste para desenvolvedores (bypass)
     const handleDevActivation = async () => {
         if (confirm("MODO DEV: Ativar assinatura grátis para teste?")) {
             await api.post('/dev/activate-sub', { userId: user.id });

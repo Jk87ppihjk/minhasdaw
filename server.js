@@ -370,7 +370,7 @@ app.post('/api/checkout/process_payment', authenticateToken, async (req, res) =>
     }
 });
 
-// Rota LEGACY para preferência (Mantida apenas para evitar 404, mas corrigida para evitar crash)
+// Rota LEGACY para preferência (Mantida para evitar 404, mas corrigida para evitar crash)
 app.post('/api/checkout/create-preference', authenticateToken, async (req, res) => {
     try {
         const frontUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
