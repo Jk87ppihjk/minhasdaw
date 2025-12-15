@@ -303,13 +303,17 @@ app.post('/api/dev/activate-sub', authenticateToken, async (req, res) => {
 // --- SERVIDOR DE ARQUIVOS ESTÁTICOS (PRODUÇÃO) ---
 // Em produção, o Node.js serve o build do React
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER;
+
 if (isProduction) {
+    // Serve os arquivos estáticos da pasta dist
     app.use(express.static(path.join(__dirname, 'dist')));
     
-    // Qualquer rota não-API retorna o index.html (SPA)
+    // Qualquer rota não-API retorna o index.html (SPA) para o React Router lidar
     app.get('*', (req, res) => {
-        // Ignora rotas API
-        if (req.path.startsWith('/api')) return res.sendStatus(404);
+        // Ignora rotas API para não retornar HTML em erros 404 de API
+        if (req.path.startsWith('/api')) {
+            return res.status(404).json({ message: 'API Route not found' });
+        }
         res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
 }

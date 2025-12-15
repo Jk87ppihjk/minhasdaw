@@ -1,8 +1,8 @@
 import axios from 'axios';
 
-// Usamos caminho relativo. 
-// Em DEV: O Vite proxy redireciona '/api' para 'http://localhost:3000/api'
-// Em PROD: O server.js serve tanto o front quanto o back no mesmo domínio
+// Usamos caminho relativo vazio.
+// Em DEV (npm run dev): O proxy do Vite (vite.config.ts) captura '/api' e manda para 'http://localhost:3000'.
+// Em PROD (npm start): O server.js serve o front e a API no mesmo domínio/porta, então '/api' funciona nativamente.
 const API_URL = '';
 
 export const api = axios.create({
