@@ -6,14 +6,14 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
-  // Carrega variáveis de ambiente.
-  const env = loadEnv(mode, (process as any).cwd(), '');
+  // Carrega variáveis de ambiente
+  const env = loadEnv(mode, process.cwd(), '');
   
   return {
     plugins: [react()],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, './'),
+        '@': path.resolve(__dirname, './src'),
       },
     },
     define: {
@@ -21,6 +21,15 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '0.0.0.0',
+      port: 5173,
+      // Configuração de Proxy para redirecionar chamadas /api para o backend
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          secure: false,
+        }
+      },
       allowedHosts: [
         'minhasdaw.onrender.com',
         'localhost',

@@ -1,18 +1,9 @@
 import axios from 'axios';
 
-let API_URL = '';
-
-// Safe detection of environment without relying on import.meta.env.PROD
-try {
-  if (typeof window !== 'undefined') {
-     const hostname = window.location.hostname;
-     if (hostname === 'localhost' || hostname === '127.0.0.1') {
-         API_URL = 'http://localhost:3000';
-     }
-  }
-} catch (e) {
-  console.warn("Environment detection failed, defaulting to relative API path.");
-}
+// Usamos caminho relativo. 
+// Em DEV: O Vite proxy redireciona '/api' para 'http://localhost:3000/api'
+// Em PROD: O server.js serve tanto o front quanto o back no mesmo domínio
+const API_URL = '';
 
 export const api = axios.create({
     baseURL: `${API_URL}/api`,
