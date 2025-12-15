@@ -1,15 +1,22 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
-  // Carrega variáveis de ambiente. O terceiro argumento '' permite carregar todas as variáveis, não apenas as com prefixo VITE_
-  // Casting process to any to avoid TS error if @types/node is missing
+  // Carrega variáveis de ambiente.
   const env = loadEnv(mode, (process as any).cwd(), '');
   
   return {
     plugins: [react()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './'),
+      },
+    },
     define: {
-      // Injeta a variável process.env.API_KEY no código do cliente
       'process.env.API_KEY': JSON.stringify(env.API_KEY),
     },
     server: {
