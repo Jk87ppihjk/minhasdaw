@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Play, Pause, Square, Music, Settings2, Download, Save, Palette, Menu, PanelLeftClose, PanelRightClose, Undo2, Redo2, Maximize, Minimize, MoreVertical, FolderOpen, Ear, HardDrive } from 'lucide-react';
+import { Play, Pause, Square, Music, Settings2, Download, Save, Palette, Menu, PanelLeftClose, PanelRightClose, Undo2, Redo2, Maximize, Minimize, MoreVertical, FolderOpen, Ear, HardDrive, LayoutGrid } from 'lucide-react';
 import { AudioEngineState } from '../../types';
 
 interface HeaderProps {
@@ -24,6 +24,7 @@ interface HeaderProps {
   // New File System Actions
   saveProjectToDisk: () => void;
   openProjectFromDisk: () => void;
+  onGoHome: () => void;
   
   // Legacy Actions (kept for export)
   exportWav: () => void;
@@ -46,7 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
   audioState, setAudioState, togglePlay, handleStop, toggleRecord, formatTime,
   isMonitoring, toggleMonitoring,
   undoTracks, redoTracks, canUndo, canRedo, 
-  saveProjectToDisk, openProjectFromDisk, exportWav,
+  saveProjectToDisk, openProjectFromDisk, onGoHome, exportWav,
   toggleTheme, toggleFullScreen, isFullScreen,
   isTrackListOpen, setIsTrackListOpen, isSidebarOpen, setIsSidebarOpen,
   currentProjectName
@@ -62,9 +63,14 @@ export const Header: React.FC<HeaderProps> = ({
              {isTrackListOpen ? <PanelLeftClose className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
           
-          <div className="w-8 h-8 bg-[var(--accent)] rounded flex items-center justify-center shadow-lg hidden md:flex border border-zinc-700">
-            <Music className="text-[var(--bg-main)] w-5 h-5 fill-current" />
-          </div>
+          <button 
+            onClick={onGoHome}
+            className="w-8 h-8 bg-[var(--bg-element)] rounded flex items-center justify-center shadow-lg border border-[var(--border-color)] hover:bg-[var(--accent)] hover:text-black hover:border-[var(--accent)] transition-all group"
+            title="Back to Dashboard"
+          >
+            {currentProjectName ? <LayoutGrid className="w-4 h-4 text-[var(--text-muted)] group-hover:text-black" /> : <Music className="text-[var(--text-main)] w-4 h-4 fill-current group-hover:text-black" />}
+          </button>
+          
           <div className="flex flex-col justify-center hidden md:flex">
               <h1 className="font-bold text-lg tracking-tight text-[var(--text-main)] font-sans leading-none">MONOCHROME</h1>
               {currentProjectName && <span className="text-[10px] text-[var(--text-muted)] font-mono uppercase tracking-widest">{currentProjectName}</span>}

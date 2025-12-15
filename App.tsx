@@ -398,6 +398,11 @@ export default function App() {
       }
   };
 
+  const handleGoHome = () => {
+      handleStop();
+      setCurrentProjectName(null);
+  };
+
   const exportWav = async () => {
       audioEngine.resumeContext(); if(tracks.length === 0) return;
       saveAs(await audioEngine.renderOffline(tracks, audioState.totalDuration), "mixdown.wav");
@@ -905,6 +910,7 @@ export default function App() {
         
         saveProjectToDisk={handleQuickSave} 
         openProjectFromDisk={() => toggleProjectManager('open')} 
+        onGoHome={handleGoHome}
         exportWav={exportWav}
         
         toggleTheme={toggleTheme} toggleFullScreen={toggleFullScreen} isFullScreen={isFullScreen}
