@@ -34,22 +34,27 @@
       }
     </script>
     <style>
-      /* Custom Scrollbar */
+      /* Custom Scrollbar - Improved Visibility */
       ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
+        width: 10px;
+        height: 10px;
       }
       ::-webkit-scrollbar-track {
-        background: #000; 
+        background: #09090b; 
+        border-left: 1px solid #333;
       }
       ::-webkit-scrollbar-thumb {
-        background: #333; 
-        border-radius: 3px;
-        border: 1px solid #000;
+        background: #444; 
+        border: 2px solid #09090b;
+        border-radius: 5px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #555; 
+        background: #666; 
       }
+      ::-webkit-scrollbar-corner {
+        background: #09090b;
+      }
+      
       body {
         background-color: #000000;
         color: #e4e4e7;

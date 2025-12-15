@@ -50,7 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
              {isTrackListOpen ? <PanelLeftClose className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
           
-          <div className="w-8 h-8 bg-[var(--accent)] rounded flex items-center justify-center shadow-lg hidden md:flex">
+          <div className="w-8 h-8 bg-[var(--accent)] rounded flex items-center justify-center shadow-lg hidden md:flex border border-zinc-700">
             <Music className="text-[var(--bg-main)] w-5 h-5 fill-current" />
           </div>
           <h1 className="font-bold text-lg tracking-tight hidden md:block text-[var(--text-main)] font-sans">MONOCHROME</h1>
@@ -73,43 +73,57 @@ export const Header: React.FC<HeaderProps> = ({
                     </div>
                 </div>
 
-                <div className="bg-[var(--bg-element)] rounded-full px-2 py-1.5 flex items-center gap-2 border border-[var(--border-color)] shadow-inner">
-                    <button onClick={handleStop} className="p-2 hover:bg-[var(--bg-main)] rounded-full text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors"><Square className="w-4 h-4 fill-current" /></button>
-                    <button onClick={() => togglePlay()} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${audioState.isPlaying ? 'bg-[var(--accent)] text-black shadow-lg' : 'bg-[var(--bg-panel)] text-[var(--text-main)] hover:bg-[var(--bg-main)] border border-[var(--border-color)]'}`}>
+                <div className="bg-[var(--bg-element)] rounded-full px-3 py-2 flex items-center gap-3 border border-[var(--border-color)] shadow-xl">
+                    <button onClick={handleStop} className="p-2 hover:bg-[var(--bg-main)] rounded-full text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors border border-transparent hover:border-[var(--border-color)]"><Square className="w-4 h-4 fill-current" /></button>
+                    <button onClick={() => togglePlay()} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all border ${audioState.isPlaying ? 'bg-[var(--accent)] text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.4)]' : 'bg-[var(--bg-panel)] text-[var(--text-main)] hover:bg-[var(--bg-main)] border-[var(--border-color)]'}`}>
                         {audioState.isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
                     </button>
-                    <button onClick={toggleRecord} className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all ${audioState.isRecording ? 'bg-red-600 border-red-500 text-white animate-pulse' : 'bg-[var(--bg-element)] border-[var(--border-color)] text-red-500 hover:text-red-400'}`}>
+                    <button onClick={toggleRecord} className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all ${audioState.isRecording ? 'bg-red-600 border-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(220,38,38,0.5)]' : 'bg-[var(--bg-element)] border-[var(--border-color)] text-red-500 hover:text-red-400 hover:border-red-900'}`}>
                         <div className={`w-3 h-3 rounded-full ${audioState.isRecording ? 'bg-white' : 'bg-current'}`}></div>
                     </button>
                     {/* Live Monitoring Button */}
                     <button 
                         onClick={toggleMonitoring} 
-                        className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all ${isMonitoring ? 'bg-green-500/20 text-green-500 border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'bg-[var(--bg-element)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all ${isMonitoring ? 'bg-green-500/20 text-green-500 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)]' : 'bg-[var(--bg-element)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
                         title="Live FX Monitor"
                     >
                         <Ear className="w-5 h-5" />
                     </button>
                 </div>
                 
-                <div className="flex flex-col items-center justify-center h-10 w-24 md:w-28 bg-[var(--bg-main)] border border-[var(--border-color)] rounded text-center shadow-inner">
-                     <span className="font-mono text-lg md:text-xl text-[var(--accent)] leading-none mt-1">{formatTime(audioState.currentTime)}</span>
+                <div className="flex flex-col items-center justify-center h-10 w-24 md:w-28 bg-[var(--bg-main)] border border-[var(--border-color)] rounded text-center shadow-inner relative overflow-hidden">
+                     <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-element)] to-transparent opacity-50 pointer-events-none"></div>
+                     <span className="font-mono text-lg md:text-xl text-[var(--accent)] leading-none mt-1 z-10">{formatTime(audioState.currentTime)}</span>
                 </div>
             </div>
         </div>
 
         {/* Right: Tools / Mixer Toggle */}
         <div className="flex items-center gap-3 justify-end w-auto md:w-1/4">
+            
+            {/* Master Volume - New Feature */}
+            <div className="hidden lg:flex flex-col items-end mr-4 group">
+                <span className="text-[8px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">Master Vol</span>
+                <input 
+                    type="range" 
+                    min="0" max="1" step="0.01" 
+                    value={audioState.masterVolume} 
+                    onChange={(e) => setAudioState(p => ({...p, masterVolume: parseFloat(e.target.value)}))}
+                    className="w-20 h-1 bg-[var(--bg-element)] rounded-lg appearance-none cursor-pointer accent-[var(--accent)]"
+                />
+            </div>
+
             <div className="hidden md:flex items-center gap-2">
                 <button 
                     onClick={() => canUndo && undoTracks()} 
-                    className={`p-2 rounded text-[var(--text-muted)] transition-colors ${canUndo ? 'hover:text-[var(--text-main)] hover:bg-[var(--bg-element)]' : 'opacity-30 cursor-default'}`}
+                    className={`p-2 rounded border border-transparent text-[var(--text-muted)] transition-colors ${canUndo ? 'hover:text-[var(--text-main)] hover:bg-[var(--bg-element)] hover:border-[var(--border-color)]' : 'opacity-30 cursor-default'}`}
                     title="Undo (Ctrl+Z)"
                 >
                     <Undo2 className="w-5 h-5" />
                 </button>
                 <button 
                     onClick={() => canRedo && redoTracks()} 
-                    className={`p-2 rounded text-[var(--text-muted)] transition-colors ${canRedo ? 'hover:text-[var(--text-main)] hover:bg-[var(--bg-element)]' : 'opacity-30 cursor-default'}`}
+                    className={`p-2 rounded border border-transparent text-[var(--text-muted)] transition-colors ${canRedo ? 'hover:text-[var(--text-main)] hover:bg-[var(--bg-element)] hover:border-[var(--border-color)]' : 'opacity-30 cursor-default'}`}
                     title="Redo (Ctrl+Y)"
                 >
                     <Redo2 className="w-5 h-5" />

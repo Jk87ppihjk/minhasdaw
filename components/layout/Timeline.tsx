@@ -99,7 +99,7 @@ export const Timeline: React.FC<TimelineProps> = ({
         gridLines.push(
             <div 
                 key={`hgrid-${t}`} 
-                className="absolute left-0 right-0 border-b border-[var(--border-color)] opacity-20 pointer-events-none" 
+                className="absolute left-0 right-0 border-b border-[var(--border-color)] opacity-40 pointer-events-none" 
                 style={{ top: (t + 1) * trackHeight, height: 1 }} 
             />
         );
@@ -115,7 +115,7 @@ export const Timeline: React.FC<TimelineProps> = ({
             </div>
           );
           gridLines.push(
-            <div key={`grid-${i}`} className="absolute top-0 bottom-0 border-l border-[var(--border-color)] opacity-30 pointer-events-none" style={{ left }} />
+            <div key={`grid-${i}`} className="absolute top-0 bottom-0 border-l border-[var(--border-color)] opacity-50 pointer-events-none" style={{ left }} />
           );
           
           // Beats (1.2, 1.3, 1.4)
@@ -127,7 +127,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                 </div>
              );
              gridLines.push(
-                <div key={`grid-${i}-${j}`} className="absolute top-0 bottom-0 border-l border-[var(--border-color)] opacity-10 pointer-events-none" style={{ left: beatLeft }} />
+                <div key={`grid-${i}-${j}`} className="absolute top-0 bottom-0 border-l border-[var(--border-color)] opacity-20 pointer-events-none" style={{ left: beatLeft }} />
              );
           }
       }
@@ -219,7 +219,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                                         onMouseDown={(e) => handleClipInteractionStart(e, track.id, clip.id, 'move')} 
                                         onTouchStart={(e) => handleClipInteractionStart(e, track.id, clip.id, 'move')}
                                         onContextMenu={(e) => handleContextMenu(e, track.id, clip.id)}
-                                        className={`absolute top-2 bottom-2 rounded-md overflow-hidden border transition-all shadow-md group/clip touch-none ${selectedClipId === clip.id ? 'border-[var(--text-main)] bg-[var(--waveform-bg)] z-30 shadow-xl' : 'border-[var(--border-color)] bg-[var(--bg-element)] z-10 hover:border-[var(--text-muted)]'}`} 
+                                        className={`absolute top-2 bottom-2 rounded-md overflow-hidden border transition-all shadow-md group/clip touch-none ${selectedClipId === clip.id ? 'border-[var(--text-main)] bg-[var(--waveform-bg)] z-30 shadow-xl ring-1 ring-[var(--text-main)]' : 'border-[var(--border-color)] bg-[var(--bg-element)] z-10 hover:border-[var(--text-muted)]'}`} 
                                         style={{ left: `${clip.startTime * pixelsPerSecond}px`, width: `${clip.duration * pixelsPerSecond}px` }}
                                     >
                                         <div className="absolute top-0 bottom-0 left-0 w-8 cursor-ew-resize hover:bg-[var(--accent)]/50 z-20 opacity-0 group-hover/clip:opacity-100 transition-opacity flex items-center justify-center touch-none" 
@@ -238,11 +238,11 @@ export const Timeline: React.FC<TimelineProps> = ({
                         ))}
                     </div>
 
-                    {/* Playhead (Agulha) - Z-Index 50 e pointer-events-none para não atrapalhar */}
+                    {/* Playhead (Agulha) - Improved Visuals */}
                     <div className="absolute top-0 bottom-0 z-50 pointer-events-none transition-none" style={{ left: `${audioState.currentTime * pixelsPerSecond}px` }}>
-                        <div className="w-[1px] bg-[var(--text-main)] h-full shadow-[0_0_10px_rgba(255,255,255,0.5)]" />
+                        <div className="w-[1px] bg-[#fff] h-full shadow-[0_0_15px_rgba(255,255,255,0.8)]" />
                         {/* Cabeça da Agulha */}
-                        <div className="w-3 h-3 bg-[var(--text-main)] rotate-45 transform -translate-x-[5px] -translate-y-[6px] absolute top-6 shadow-md" />
+                        <div className="w-4 h-4 bg-[#fff] rotate-45 transform -translate-x-[7.5px] -translate-y-[8px] absolute top-6 shadow-md border border-black" />
                     </div>
                 </div>
          </div>

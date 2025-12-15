@@ -38,7 +38,7 @@ export const TrackList: React.FC<TrackListProps> = ({
          <div className="h-10 border-b border-[var(--border-color)] bg-[var(--bg-panel)] flex flex-shrink-0 items-center justify-between px-3">
              <span className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Tracks</span>
              <div className="flex gap-2">
-                 <button onClick={addNewTrack} className="bg-[var(--text-main)] text-[var(--bg-main)] px-2 py-0.5 rounded text-[10px] font-bold hover:bg-[var(--accent)] hover:text-black">+ NEW</button>
+                 <button onClick={addNewTrack} className="bg-[var(--text-main)] text-[var(--bg-main)] px-2 py-0.5 rounded text-[10px] font-bold hover:bg-[var(--accent)] hover:text-black border border-transparent">+ NEW</button>
                  <label className="bg-[var(--bg-element)] border border-[var(--border-color)] px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer text-[var(--text-main)] hover:border-[var(--text-muted)] transition-colors">IMP<input type="file" accept="audio/*" className="hidden" onChange={handleImportBeat} /></label>
              </div>
          </div>
@@ -52,7 +52,7 @@ export const TrackList: React.FC<TrackListProps> = ({
             </div>
 
             {tracks.map(track => (
-                <div key={track.id} onClick={() => { setSelectedTrackId(track.id); closeOnMobile(); }} className={`h-28 flex-shrink-0 px-3 py-3 flex flex-col justify-between border-b border-[var(--border-color)] cursor-pointer group transition-colors relative ${selectedTrackId === track.id ? 'bg-[var(--bg-element)] border-l-4 border-l-[var(--accent)]' : 'bg-[var(--bg-panel)] hover:bg-[var(--bg-element)] border-l-4 border-l-transparent'}`}>
+                <div key={track.id} onClick={() => { setSelectedTrackId(track.id); closeOnMobile(); }} className={`h-28 flex-shrink-0 px-3 py-3 flex flex-col justify-between border-b border-[var(--border-color)] cursor-pointer group transition-colors relative ${selectedTrackId === track.id ? 'bg-[var(--bg-element)] border-l-4 border-l-[var(--accent)] shadow-inner' : 'bg-[var(--bg-panel)] hover:bg-[var(--bg-element)] border-l-4 border-l-transparent'}`}>
                     <div className="flex items-center justify-between">
                         <div className="flex flex-col overflow-hidden">
                             <span className={`font-bold text-sm truncate w-24 ${selectedTrackId === track.id ? 'text-[var(--text-main)]' : 'text-[var(--text-muted)]'}`} onDoubleClick={() => editTrackName(track.id)}>{track.name}</span>
@@ -65,7 +65,7 @@ export const TrackList: React.FC<TrackListProps> = ({
                     </div>
                     <div className="flex items-center gap-2 mt-2">
                         <Volume2 className="w-3 h-3 text-[var(--text-muted)]" />
-                        <div className="h-1 flex-1 bg-[var(--bg-main)] rounded-full overflow-hidden">
+                        <div className="h-1 flex-1 bg-[var(--bg-main)] rounded-full overflow-hidden border border-[#222]">
                             <div className="h-full bg-[var(--text-muted)]" style={{ width: `${track.volume * 100}%` }}></div>
                         </div>
                     </div>

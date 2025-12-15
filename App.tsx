@@ -31,14 +31,14 @@ const BASE_PX_PER_SEC = 50;
 // --- THEME CONFIGURATION ---
 const THEMES: Record<string, React.CSSProperties> = {
   monochrome: { 
-    '--bg-main': '#000000', 
-    '--bg-panel': '#09090b', 
-    '--bg-element': '#18181b', 
+    '--bg-main': '#050505',  // Slightly lighter black for depth
+    '--bg-panel': '#0a0a0a', 
+    '--bg-element': '#1a1a1a', 
     '--text-main': '#ffffff', 
-    '--text-muted': '#71717a', 
-    '--border-color': '#27272a', 
+    '--text-muted': '#a1a1aa', // Lighter gray for better readability
+    '--border-color': '#3f3f46', // Zinc-700 for visible borders (High Contrast)
     '--accent': '#ffffff', 
-    '--waveform-bg': '#18181b', 
+    '--waveform-bg': '#27272a', 
     '--waveform-wave': '#e4e4e7' 
   } as React.CSSProperties,
 };
@@ -180,7 +180,9 @@ export default function App() {
         audioEngine.setTrackVolume(track.id, effectiveVolume);
         if(audioState.isPlaying || isMonitoring) audioEngine.updateTrackSettings(track);
     });
-  }, [tracks, audioState.isPlaying, isMonitoring]);
+    // Master Volume Update
+    audioEngine.setMasterVolume(audioState.masterVolume);
+  }, [tracks, audioState.isPlaying, isMonitoring, audioState.masterVolume]);
 
   // --- Project Management ---
   const saveProject = async () => {
