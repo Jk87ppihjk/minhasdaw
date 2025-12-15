@@ -20,8 +20,16 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                 return;
             }
 
+            const publicKey = process.env.MP_PUBLIC_KEY;
+
+            if (!publicKey) {
+                console.error("MP_PUBLIC_KEY não configurada nas variáveis de ambiente.");
+                setPaymentStatus('error');
+                return;
+            }
+
             // @ts-ignore
-            const mp = new window.MercadoPago('APP_USR-f1eec6a4-0441-4fb8-af10-6b904d6f87eb', {
+            const mp = new window.MercadoPago(publicKey, {
                 locale: 'pt-BR'
             });
             

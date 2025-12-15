@@ -18,6 +18,7 @@ export default defineConfig(({ mode }) => {
     },
     define: {
       'process.env.API_KEY': JSON.stringify(env.API_KEY),
+      'process.env.MP_PUBLIC_KEY': JSON.stringify(env.MP_PUBLIC_KEY), // EXPOSIÇÃO DA CHAVE PÚBLICA DO MP
     },
     server: {
       host: '0.0.0.0',
