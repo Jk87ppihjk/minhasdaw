@@ -1,6 +1,6 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Music, FolderOpen, ArrowLeft, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, ArrowLeftRight, Volume2, Trash2 } from 'lucide-react';
-import JSZip from 'jszip';
 import saveAs from 'file-saver';
 import { audioEngine } from './services/AudioEngine';
 import { Track, TrackType, AudioEngineState, Clip, EffectSettings, ContextMenuState } from './types';
@@ -31,12 +31,12 @@ const BASE_PX_PER_SEC = 50;
 // --- THEME CONFIGURATION ---
 const THEMES: Record<string, React.CSSProperties> = {
   monochrome: { 
-    '--bg-main': '#050505',  // Slightly lighter black for depth
+    '--bg-main': '#050505',  
     '--bg-panel': '#0a0a0a', 
     '--bg-element': '#1a1a1a', 
     '--text-main': '#ffffff', 
-    '--text-muted': '#a1a1aa', // Lighter gray for better readability
-    '--border-color': '#3f3f46', // Zinc-700 for visible borders (High Contrast)
+    '--text-muted': '#a1a1aa', 
+    '--border-color': '#3f3f46', 
     '--accent': '#ffffff', 
     '--waveform-bg': '#27272a', 
     '--waveform-wave': '#e4e4e7' 
@@ -167,7 +167,6 @@ export default function App() {
   };
 
   const toggleTheme = () => {
-    // Single theme now
     setTheme('monochrome');
   };
 
@@ -184,46 +183,160 @@ export default function App() {
     audioEngine.setMasterVolume(audioState.masterVolume);
   }, [tracks, audioState.isPlaying, isMonitoring, audioState.masterVolume]);
 
-  // --- Project Management ---
-  const saveProject = async () => {
-    const zip = new JSZip();
-    const audioFolder = zip.folder("audio");
-    let clipIndex = 0;
-    const tracksForJson = tracks.map(t => ({
-        ...t,
-        clips: t.clips.map(c => {
-            const fileName = `clip_${clipIndex++}.wav`;
-            if (c.blob && audioFolder) audioFolder.file(fileName, c.blob);
-            return { ...c, fileName: fileName, blob: null, buffer: null };
-        })
-    }));
-    zip.file("project.json", JSON.stringify({ tracks: tracksForJson, audioState }));
-    saveAs(await zip.generateAsync({ type: "blob" }), "monochrome_project.zip");
+  // --- FILE SYSTEM API (FL STUDIO STYLE SAVE) ---
+  
+  const handleSaveToDisk = async () => {
+      try {
+          if (!('showDirectoryPicker' in window)) {
+              alert("Your browser does not support the File System Access API. Please use a modern browser like Chrome, Edge, or Opera.");
+              return;
+          }
+
+          // 1. Pick Directory
+          const dirHandle = await (window as any).showDirectoryPicker({
+              mode: 'readwrite',
+              startIn: 'documents'
+          });
+
+          // 2. Project Name
+          const projectName = prompt("Nome do Projeto:", "Meu Projeto") || "Meu Projeto";
+          const projectDir = await dirHandle.getDirectoryHandle(projectName, { create: true });
+
+          setIsProcessing(true);
+          setProcessingMessage("SAVING TO DISK...");
+
+          // 3. Prepare JSON Data (Exclude blobs)
+          const projectState = {
+              audioState,
+              tracks: tracks.map(t => ({
+                  ...t,
+                  clips: t.clips.map(c => ({
+                      ...c,
+                      buffer: null, // Don't save buffer to JSON
+                      blob: null,   // Don't save blob to JSON
+                      fileName: `${c.id}.wav` // Reference to external file
+                  }))
+              }))
+          };
+
+          // 4. Save JSON File
+          const jsonHandle = await projectDir.getFileHandle('project.monochrome', { create: true });
+          const writable = await jsonHandle.createWritable();
+          await writable.write(JSON.stringify(projectState));
+          await writable.close();
+
+          // 5. Save Audio Assets
+          const samplesDir = await projectDir.getDirectoryHandle('samples', { create: true });
+          
+          for (const track of tracks) {
+              for (const clip of track.clips) {
+                  if (clip.buffer) {
+                      let blobToWrite = clip.blob;
+                      if (!blobToWrite) {
+                          // If blob is missing (e.g. processed audio), re-encode buffer to wav
+                          blobToWrite = audioEngine.bufferToWave(clip.buffer, clip.buffer.length);
+                      }
+                      
+                      const fileHandle = await samplesDir.getFileHandle(`${clip.id}.wav`, { create: true });
+                      const fileWritable = await fileHandle.createWritable();
+                      await fileWritable.write(blobToWrite);
+                      await fileWritable.close();
+                  }
+              }
+          }
+
+          setIsProcessing(false);
+          alert("Projeto salvo com sucesso na sua pasta!");
+
+      } catch (err) {
+          console.error(err);
+          setIsProcessing(false);
+          // If user cancels, do nothing. If error, log it.
+          if ((err as Error).name !== 'AbortError') {
+              alert("Erro ao salvar projeto. Verifique as permissões do navegador.");
+          }
+      }
   };
 
-  const handleLoadProject = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    try {
-        await audioEngine.resumeContext(); handleStop();
-        const zip = await JSZip.loadAsync(file);
-        const projectData = JSON.parse(await zip.file("project.json")!.async("string"));
-        const audioFolder = zip.folder("audio");
-        const loadedTracks: Track[] = [];
-        for (const trackData of projectData.tracks) {
-            const clips: Clip[] = [];
-            for (const clipData of trackData.clips) {
-                if (clipData.fileName && audioFolder) {
-                    const audioFile = audioFolder.file(clipData.fileName);
-                    if (audioFile) {
-                        const arrayBuffer = await audioFile.async("arraybuffer");
-                        if (arrayBuffer.byteLength > 0) clips.push({ ...clipData, buffer: await audioEngine.decodeAudioData(arrayBuffer.slice(0)), blob: new Blob([arrayBuffer], { type: 'audio/wav' }) });
-                    }
-                }
-            }
-            loadedTracks.push({ ...trackData, clips });
-        }
-        setTracks(loadedTracks); setAudioState(prev => ({ ...prev, ...projectData.audioState, isPlaying: false })); setWelcomeScreen(false);
-    } catch (err) { alert("Error loading project."); }
+  const handleOpenFromDisk = async () => {
+      try {
+          if (!('showDirectoryPicker' in window)) {
+              alert("Browser not supported.");
+              return;
+          }
+
+          await audioEngine.resumeContext();
+          handleStop();
+
+          // 1. Pick Directory
+          const dirHandle = await (window as any).showDirectoryPicker({
+              mode: 'read',
+              startIn: 'documents'
+          });
+
+          setIsProcessing(true);
+          setProcessingMessage("LOADING PROJECT...");
+
+          // 2. Load JSON
+          let jsonHandle;
+          try {
+              jsonHandle = await dirHandle.getFileHandle('project.monochrome');
+          } catch(e) {
+              alert("Arquivo 'project.monochrome' não encontrado nesta pasta.");
+              setIsProcessing(false);
+              return;
+          }
+
+          const file = await jsonHandle.getFile();
+          const text = await file.text();
+          const projectData = JSON.parse(text);
+
+          // 3. Load Audio Assets
+          const loadedTracks: Track[] = [];
+          let samplesDir: any;
+          try {
+              samplesDir = await dirHandle.getDirectoryHandle('samples');
+          } catch(e) {
+              console.warn("Samples folder not found.");
+          }
+
+          for (const trackData of projectData.tracks) {
+              const clips: Clip[] = [];
+              for (const clipData of trackData.clips) {
+                  if (clipData.fileName && samplesDir) {
+                      try {
+                          const audioHandle = await samplesDir.getFileHandle(clipData.fileName);
+                          const audioFile = await audioHandle.getFile();
+                          const arrayBuffer = await audioFile.arrayBuffer();
+                          
+                          if (arrayBuffer.byteLength > 0) {
+                              const buffer = await audioEngine.decodeAudioData(arrayBuffer);
+                              clips.push({ 
+                                  ...clipData, 
+                                  buffer: buffer,
+                                  blob: new Blob([arrayBuffer], { type: 'audio/wav' }) 
+                              });
+                          }
+                      } catch(e) {
+                          console.warn(`Missing file: ${clipData.fileName}`);
+                      }
+                  }
+              }
+              loadedTracks.push({ ...trackData, clips });
+          }
+
+          setTracks(loadedTracks); 
+          setAudioState(prev => ({ ...prev, ...projectData.audioState, isPlaying: false })); 
+          setWelcomeScreen(false);
+          setIsProcessing(false);
+
+      } catch (err) {
+          console.error(err);
+          setIsProcessing(false);
+          if ((err as Error).name !== 'AbortError') {
+              alert("Erro ao abrir projeto.");
+          }
+      }
   };
 
   const exportWav = async () => {
@@ -493,7 +606,7 @@ export default function App() {
               else if (action === 'gain') newBuffer = await audioEngine.applyGain(clip.buffer, 3.0); 
               else if (action === 'lofi') newBuffer = await audioEngine.applyLoFi(clip.buffer);
               else if (action === 'deesser') newBuffer = await audioEngine.applyDeEsser(clip.buffer);
-              if (newBuffer) setTracks(prev => prev.map(t => t.id === contextMenu.trackId ? { ...t, clips: t.clips.map(c => c.id === contextMenu.clipId ? { ...c, buffer: newBuffer!, duration: newBuffer!.duration } : c) } : t));
+              if (newBuffer) setTracks(prev => prev.map(t => t.id === contextMenu.trackId ? { ...t, clips: t.clips.map(c => c.id === contextMenu.clipId ? { ...c, buffer: newBuffer!, duration: newBuffer!.duration, blob: undefined } : c) } : t));
           }
           setIsProcessing(false);
       }, 50);
@@ -643,7 +756,9 @@ export default function App() {
              <p className="text-lg md:text-xl text-[var(--text-muted)] font-light tracking-widest mb-12 uppercase">Professional Web DAW</p>
              <div className="flex flex-col md:flex-row gap-4 w-full max-w-md">
                  <button onClick={() => setWelcomeScreen(false)} className="flex-1 px-8 py-4 bg-[var(--text-main)] text-[var(--bg-main)] font-bold tracking-widest hover:bg-[var(--text-muted)] hover:text-white transition-colors shadow-2xl uppercase">Enter Studio</button>
-                 <label className="flex-1 px-8 py-4 border border-[var(--text-main)] text-[var(--text-main)] font-bold tracking-widest hover:bg-[var(--text-main)] hover:text-black transition-colors shadow-2xl uppercase cursor-pointer flex items-center justify-center gap-2"><FolderOpen className="w-5 h-5" /> Load Project<input type="file" accept=".zip" className="hidden" onChange={handleLoadProject} /></label>
+                 <button onClick={handleOpenFromDisk} className="flex-1 px-8 py-4 border border-[var(--text-main)] text-[var(--text-main)] font-bold tracking-widest hover:bg-[var(--text-main)] hover:text-black transition-colors shadow-2xl uppercase cursor-pointer flex items-center justify-center gap-2">
+                    <FolderOpen className="w-5 h-5" /> Open Project
+                 </button>
              </div>
           </div>
       )}
@@ -680,7 +795,11 @@ export default function App() {
       <Header 
         audioState={audioState} setAudioState={setAudioState} togglePlay={togglePlay} handleStop={handleStop} toggleRecord={toggleRecord} formatTime={formatTime}
         isMonitoring={isMonitoring} toggleMonitoring={toggleMonitoring}
-        undoTracks={undoTracks} redoTracks={redoTracks} canUndo={canUndo} canRedo={canRedo} saveProject={saveProject} exportWav={exportWav} toggleTheme={toggleTheme} toggleFullScreen={toggleFullScreen} isFullScreen={isFullScreen}
+        undoTracks={undoTracks} redoTracks={redoTracks} canUndo={canUndo} canRedo={canRedo} 
+        
+        saveProjectToDisk={handleSaveToDisk} openProjectFromDisk={handleOpenFromDisk} exportWav={exportWav}
+        
+        toggleTheme={toggleTheme} toggleFullScreen={toggleFullScreen} isFullScreen={isFullScreen}
         isTrackListOpen={isTrackListOpen} setIsTrackListOpen={setIsTrackListOpen} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen}
       />
 

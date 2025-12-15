@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { Play, Pause, Square, Music, Settings2, Download, Save, Palette, Menu, PanelLeftClose, PanelRightClose, Undo2, Redo2, Maximize, Minimize, MoreVertical, FolderOpen, Ear } from 'lucide-react';
+import { Play, Pause, Square, Music, Settings2, Download, Save, Palette, Menu, PanelLeftClose, PanelRightClose, Undo2, Redo2, Maximize, Minimize, MoreVertical, FolderOpen, Ear, HardDrive } from 'lucide-react';
 import { AudioEngineState } from '../../types';
 
 interface HeaderProps {
@@ -19,8 +20,14 @@ interface HeaderProps {
   redoTracks: () => void;
   canUndo: boolean;
   canRedo: boolean;
-  saveProject: () => void;
+  
+  // New File System Actions
+  saveProjectToDisk: () => void;
+  openProjectFromDisk: () => void;
+  
+  // Legacy Actions (kept for export)
   exportWav: () => void;
+  
   toggleTheme: () => void;
   toggleFullScreen: () => void;
   isFullScreen: boolean;
@@ -35,7 +42,8 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   audioState, setAudioState, togglePlay, handleStop, toggleRecord, formatTime,
   isMonitoring, toggleMonitoring,
-  undoTracks, redoTracks, canUndo, canRedo, saveProject, exportWav,
+  undoTracks, redoTracks, canUndo, canRedo, 
+  saveProjectToDisk, openProjectFromDisk, exportWav,
   toggleTheme, toggleFullScreen, isFullScreen,
   isTrackListOpen, setIsTrackListOpen, isSidebarOpen, setIsSidebarOpen
 }) => {
@@ -133,10 +141,17 @@ export const Header: React.FC<HeaderProps> = ({
                 <button onClick={toggleFullScreen} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">
                     {isFullScreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
                 </button>
-                <button onClick={toggleTheme} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Palette className="w-5 h-5" /></button>
+                
+                {/* NEW FILE SYSTEM ACTIONS */}
+                <button onClick={openProjectFromDisk} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" title="Open Project Folder">
+                    <FolderOpen className="w-5 h-5" />
+                </button>
+                <button onClick={saveProjectToDisk} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" title="Save Project to Disk">
+                    <HardDrive className="w-5 h-5" />
+                </button>
+                
                 <div className="h-6 w-[1px] bg-[var(--border-color)] mx-1"></div>
-                <button onClick={saveProject} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Save className="w-5 h-5" /></button>
-                <button onClick={exportWav} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Download className="w-5 h-5" /></button>
+                <button onClick={exportWav} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" title="Export WAV"><Download className="w-5 h-5" /></button>
             </div>
             
             <button className="md:hidden p-2 text-[var(--text-muted)]"><MoreVertical className="w-5 h-5" /></button>

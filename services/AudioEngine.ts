@@ -1,3 +1,4 @@
+
 import { Track, Clip, EffectSettings } from '../types';
 import { AudioContextManager } from './audio/AudioContextManager';
 import { AudioProcessor } from './audio/AudioProcessor';
@@ -66,6 +67,7 @@ class AudioEngineService {
   applyInvertPhase = (b: AudioBuffer) => this.audioProcessor.applyInvertPhase(b);
   applyGain = (b: AudioBuffer, db: number) => this.audioProcessor.applyGain(b, db);
   renderOffline = (tracks: Track[], dur: number) => this.audioProcessor.renderOffline(tracks, dur);
+  bufferToWave = (b: AudioBuffer, len: number) => this.audioProcessor.bufferToWave(b, len);
 
   // Effects Proxies
   rebuildTrackEffects = (t: Track) => this.effectsManager.rebuildTrackEffects(t);

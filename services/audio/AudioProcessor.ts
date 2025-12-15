@@ -460,7 +460,7 @@ export class AudioProcessor {
     return curve;
   }
 
-  private bufferToWave(abuffer: AudioBuffer, len: number) {
+  public bufferToWave(abuffer: AudioBuffer, len: number) {
     const numOfChan = abuffer.numberOfChannels;
     const length = len * numOfChan * 2 + 44;
     const buffer = new ArrayBuffer(length);
