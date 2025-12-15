@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
   <head>
@@ -63,6 +64,7 @@
         -moz-user-select: none;
         -ms-user-select: none;
         user-select: none;
+        overflow: hidden; /* Prevent body scroll */
       }
       .animate-fade-in {
         animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -78,6 +80,13 @@
       }
       input[type=range]:focus {
         outline: none;
+      }
+      /* Canvas crisp rendering */
+      canvas {
+        image-rendering: -moz-crisp-edges;
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+        image-rendering: pixelated;
       }
     </style>
   <script type="importmap">

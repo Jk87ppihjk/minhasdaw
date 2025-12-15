@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   // Carrega variáveis de ambiente. O terceiro argumento '' permite carregar todas as variáveis, não apenas as com prefixo VITE_
-  const env = loadEnv(mode, process.cwd(), '');
+  // Casting process to any to avoid TS error if @types/node is missing
+  const env = loadEnv(mode, (process as any).cwd(), '');
   
   return {
     plugins: [react()],
