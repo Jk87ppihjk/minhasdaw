@@ -1,5 +1,3 @@
-// src/components/auth/CheckoutPage.tsx
-
 import React, { useEffect, useState } from 'react';
 import { Check, Zap, Cloud, Infinity, ShieldCheck, Loader2, Lock } from 'lucide-react';
 import { api } from '../../services/api';
@@ -22,11 +20,11 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                 return;
             }
 
-            // A chave pública deve vir do .env via vite.config.ts
+            // Chave pública segura injetada pelo Vite
             const publicKey = process.env.MP_PUBLIC_KEY;
 
             if (!publicKey) {
-                console.error("ERRO CRÍTICO: MP_PUBLIC_KEY não definida no .env");
+                console.error("ERRO: MP_PUBLIC_KEY ausente. Verifique o .env");
                 setPaymentStatus('error');
                 return;
             }
@@ -65,6 +63,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                         setPaymentStatus('processing');
                         
                         try {
+                            // Monta o payload para o backend
                             const payload = {
                                 transaction_amount: formData.transaction_amount,
                                 description: "Monochrome Studio Pro",
@@ -107,7 +106,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
             };
 
             const container = document.getElementById('paymentBrick_container');
-            if (container) container.innerHTML = ''; // Limpa para evitar duplicação
+            if (container) container.innerHTML = ''; // Limpa container anterior
 
             await bricksBuilder.create("payment", "paymentBrick_container", settings);
         };
@@ -116,7 +115,6 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
         return () => clearTimeout(timer);
     }, [user]);
 
-    // Função de teste para desenvolvedores (bypass)
     const handleDevActivation = async () => {
         if (confirm("MODO DEV: Ativar assinatura grátis para teste?")) {
             await api.post('/dev/activate-sub', { userId: user.id });
@@ -128,7 +126,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
         <div className="fixed inset-0 bg-[#050505] flex items-center justify-center p-4 overflow-y-auto z-[200]">
             <div className="w-full max-w-6xl grid lg:grid-cols-2 gap-0 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl bg-[#0a0a0a]">
                 
-                {/* Left: Value Proposition (PREÇO E BENEFÍCIOS) */}
+                {/* Left: Value Proposition */}
                 <div className="p-8 md:p-12 flex flex-col justify-between bg-zinc-900/30 border-r border-zinc-800 relative overflow-hidden">
                     {/* Background Pattern */}
                     <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-zinc-700 via-[#050505] to-[#050505]"></div>
@@ -187,7 +185,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                     </div>
                 </div>
 
-                {/* Right: Payment Brick Container (CHECKOUT) */}
+                {/* Right: Payment Brick Container */}
                 <div className="bg-[#0a0a0a] relative flex flex-col min-h-[600px]">
                     
                     {/* Loading State Overlay */}
@@ -197,18 +195,6 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                             <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest animate-pulse">
                                 {paymentStatus === 'processing' ? 'Processando Pagamento...' : 'Carregando Checkout Seguro...'}
                             </span>
-                        </div>
-                    )}
-
-                    {/* Error State */}
-                    {paymentStatus === 'error' && (
-                        <div className="absolute inset-0 bg-[#0a0a0a] z-50 flex flex-col items-center justify-center gap-4 text-center p-8">
-                            <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center border border-red-900/50">
-                                <ShieldCheck className="w-8 h-8 text-red-500" />
-                            </div>
-                            <h3 className="text-xl font-bold text-white">Erro no Pagamento</h3>
-                            <p className="text-zinc-500 text-sm">Verifique sua conexão ou tente novamente.</p>
-                            <button onClick={() => window.location.reload()} className="mt-4 px-6 py-2 bg-white text-black font-bold rounded hover:bg-zinc-200">Tentar Novamente</button>
                         </div>
                     )}
 
