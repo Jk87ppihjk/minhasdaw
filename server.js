@@ -12,11 +12,27 @@ import { v2 as cloudinary } from 'cloudinary';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import multer from 'multer';
 
+// Carrega variáveis de ambiente
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// --- DEBUG: VERIFICAÇÃO DE VARIÁVEIS DE AMBIENTE ---
+console.log("========================================");
+console.log("🚀 INICIANDO SERVIDOR MONOCHROME STUDIO");
+console.log("========================================");
+console.log("Environment Variables Check:");
+console.log(`- NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`- PORT: ${PORT}`);
+console.log(`- DB_HOST: ${process.env.DB_HOST || '(NOT SET)'}`);
+console.log(`- DB_USER: ${process.env.DB_USER || '(NOT SET)'}`);
+console.log(`- DB_NAME: ${process.env.DB_NAME || '(NOT SET)'}`);
+console.log(`- DB_PASSWORD: ${process.env.DB_PASSWORD ? '****** (SET)' : '(NOT SET)'}`); 
+console.log(`- CLOUDINARY_CLOUD_NAME: ${process.env.CLOUDINARY_CLOUD_NAME || '(NOT SET)'}`);
+console.log(`- FRONTEND_URL: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
+console.log("========================================");
 
 // --- MIDDLEWARE ---
 app.use(cors({
@@ -38,26 +54,41 @@ const dbConfig = {
     ssl: { rejectUnauthorized: false }, 
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0
+    queueLimit: 0,
+    connectTimeout: 10000 
 };
 
 let pool;
+
 const connectDB = async () => {
     try {
+        console.log('🔄 Attempting to connect to MySQL...');
         pool = mysql.createPool(dbConfig);
-        console.log('✅ Database connected.');
+        
+        const connection = await pool.getConnection();
+        console.log('✅ MySQL Connection Established Successfully!');
+        connection.release();
+        
         await initDB();
     } catch (err) {
-        console.error('❌ Database connection error:', err);
+        console.error('❌ FATAL DATABASE ERROR:');
+        console.error(`   Code: ${err.code}`);
+        console.error(`   Message: ${err.message}`);
+        console.error('   Check your DB_HOST, DB_USER, DB_PASSWORD and IP Whitelist settings.');
     }
 };
 
 // 2. Cloudinary Configuration
-cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET
-});
+if (process.env.CLOUDINARY_CLOUD_NAME) {
+    cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET
+    });
+    console.log('✅ Cloudinary Configured');
+} else {
+    console.warn('⚠️ Cloudinary credentials missing. Uploads will fail.');
+}
 
 // 3. Multer (Upload) Configuration
 const storage = new CloudinaryStorage({
@@ -79,7 +110,7 @@ const initDB = async () => {
     let connection;
     try {
         connection = await pool.getConnection();
-        console.log('🔄 Checking database schema...');
+        console.log('🛠️  Checking Database Schema...');
 
         // 1. Tabela de Usuários
         await connection.query(`
@@ -93,8 +124,9 @@ const initDB = async () => {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
+        console.log('   - Table "users": OK');
 
-        // 2. Tabela de Projetos (Armazena o estado JSON da DAW)
+        // 2. Tabela de Projetos 
         await connection.query(`
             CREATE TABLE IF NOT EXISTS projects (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -106,8 +138,9 @@ const initDB = async () => {
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         `);
+        console.log('   - Table "projects": OK');
 
-        // 3. Tabela de Assets (Arquivos de áudio no Cloudinary)
+        // 3. Tabela de Assets
         await connection.query(`
             CREATE TABLE IF NOT EXISTS assets (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -120,17 +153,18 @@ const initDB = async () => {
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         `);
+        console.log('   - Table "assets": OK');
 
-        // Verificação de Colunas
+        // Verificação de Colunas Extras
         const [columns] = await connection.query("SHOW COLUMNS FROM users LIKE 'is_subscribed'");
         if (columns.length === 0) {
             await connection.query("ALTER TABLE users ADD COLUMN is_subscribed BOOLEAN DEFAULT FALSE");
-            console.log("⚠️ Column 'is_subscribed' added to users table.");
+            console.log("   ⚠️ Column 'is_subscribed' added to users table.");
         }
 
-        console.log('✅ Database schema verified/updated.');
+        console.log('✅ Database Schema Sync Complete.');
     } catch (error) {
-        console.error('❌ Error initializing DB:', error);
+        console.error('❌ Error initializing DB Schema:', error.message);
     } finally {
         if (connection) connection.release();
     }
@@ -157,6 +191,8 @@ app.post('/api/auth/register', async (req, res) => {
     const { email, password, name } = req.body;
     if (!email || !password) return res.status(400).json({ message: 'Email and password required' });
     
+    if (!pool) return res.status(500).json({ message: 'Database not connected' });
+
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
         const [result] = await pool.query(
@@ -170,12 +206,15 @@ app.post('/api/auth/register', async (req, res) => {
         if (e.code === 'ER_DUP_ENTRY') {
             return res.status(409).json({ message: 'Email already exists' });
         }
+        console.error("Register Error:", e);
         res.status(500).json({ message: 'Error registering user', error: e.message });
     }
 });
 
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
+    if (!pool) return res.status(500).json({ message: 'Database not connected' });
+
     try {
         const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
         if (rows.length === 0) return res.status(400).json({ message: 'User not found' });
@@ -188,11 +227,13 @@ app.post('/api/auth/login', async (req, res) => {
             res.status(403).json({ message: 'Invalid password' });
         }
     } catch (e) {
+        console.error("Login Error:", e);
         res.status(500).json({ message: 'Login error' });
     }
 });
 
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
+    if (!pool) return res.sendStatus(500);
     try {
         const [rows] = await pool.query('SELECT id, email, name, is_subscribed FROM users WHERE id = ?', [req.user.id]);
         if (rows.length > 0) res.json(rows[0]);
@@ -204,6 +245,7 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
 
 // 2. Gerenciamento de Projetos
 app.get('/api/projects', authenticateToken, async (req, res) => {
+    if (!pool) return res.sendStatus(500);
     try {
         const [rows] = await pool.query('SELECT id, name, updated_at FROM projects WHERE user_id = ? ORDER BY updated_at DESC', [req.user.id]);
         res.json(rows);
@@ -215,9 +257,9 @@ app.get('/api/projects', authenticateToken, async (req, res) => {
 app.post('/api/projects/save', authenticateToken, async (req, res) => {
     const { name, data } = req.body;
     if (!name || !data) return res.status(400).json({ message: 'Missing name or data' });
+    if (!pool) return res.sendStatus(500);
 
     try {
-        // Verifica se projeto com mesmo nome existe para este usuário
         const [existing] = await pool.query('SELECT id FROM projects WHERE user_id = ? AND name = ?', [req.user.id, name]);
         
         if (existing.length > 0) {
@@ -234,10 +276,10 @@ app.post('/api/projects/save', authenticateToken, async (req, res) => {
 
 app.post('/api/projects/load', authenticateToken, async (req, res) => {
     const { name } = req.body;
+    if (!pool) return res.sendStatus(500);
     try {
         const [rows] = await pool.query('SELECT data FROM projects WHERE user_id = ? AND name = ?', [req.user.id, name]);
         if (rows.length > 0) {
-            // Retorna o JSON diretamente
             res.json(JSON.parse(rows[0].data));
         } else {
             res.status(404).json({ message: 'Project not found' });
@@ -247,12 +289,12 @@ app.post('/api/projects/load', authenticateToken, async (req, res) => {
     }
 });
 
-// 3. Upload de Assets (Áudio)
+// 3. Upload de Assets
 app.post('/api/assets/upload', authenticateToken, upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+    if (!pool) return res.sendStatus(500);
     
     try {
-        // Salva referência no DB
         await pool.query('INSERT INTO assets (user_id, public_id, url, format) VALUES (?, ?, ?, ?)', 
             [req.user.id, req.file.filename, req.file.path, req.file.mimetype]);
             
@@ -268,7 +310,7 @@ app.post('/api/assets/upload', authenticateToken, upload.single('file'), async (
     }
 });
 
-// 4. Pagamentos (Mercado Pago)
+// 4. Pagamentos
 app.post('/api/checkout/create-preference', authenticateToken, async (req, res) => {
     try {
         const preference = new Preference(mpClient);
@@ -290,8 +332,8 @@ app.post('/api/checkout/create-preference', authenticateToken, async (req, res) 
     }
 });
 
-// Rota de desenvolvimento para ativar assinatura sem pagar
 app.post('/api/dev/activate-sub', authenticateToken, async (req, res) => {
+    if (!pool) return res.sendStatus(500);
     try {
         await pool.query('UPDATE users SET is_subscribed = TRUE WHERE id = ?', [req.user.id]);
         res.json({ success: true, message: 'Subscription activated (DEV MODE)' });
@@ -301,10 +343,11 @@ app.post('/api/dev/activate-sub', authenticateToken, async (req, res) => {
 });
 
 // --- SERVIDOR DE ARQUIVOS ESTÁTICOS (PRODUÇÃO) ---
-// Em produção, o Node.js serve o build do React
+// Em produção (ou quando o Render define NODE_ENV=production), o Node.js serve o build do React
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER;
 
 if (isProduction) {
+    console.log('📂 Serving static files from ./dist');
     // Serve os arquivos estáticos da pasta dist
     app.use(express.static(path.join(__dirname, 'dist')));
     

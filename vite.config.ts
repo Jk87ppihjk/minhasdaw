@@ -21,11 +21,11 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '0.0.0.0',
-      port: 5173,
+      port: 5174, // ALTERADO DE 5173 PARA 5174 PARA EVITAR CONFLITO COM O BACKEND
       // Configuração de Proxy para redirecionar chamadas /api para o backend
       proxy: {
         '/api': {
-          target: 'http://localhost:3000',
+          target: 'http://localhost:3000', // Backend local roda na 3000
           changeOrigin: true,
           secure: false,
         }
