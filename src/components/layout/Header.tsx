@@ -1,6 +1,5 @@
-
-import React from 'react';
-import { Play, Pause, Square, Music, Settings2, Download, CloudUpload, Menu, PanelLeftClose, PanelRightClose, Undo2, Redo2, Maximize, Minimize, MoreVertical, Ear, LayoutGrid, PenTool, LogOut } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { Play, Pause, Square, Music, Settings2, Download, CloudUpload, Menu, PanelLeftClose, PanelRightClose, Undo2, Redo2, Maximize, Minimize, MoreVertical, Ear, LayoutGrid, PenTool } from 'lucide-react';
 import { AudioEngineState } from '../../types';
 
 interface HeaderProps {
@@ -56,6 +55,16 @@ export const Header: React.FC<HeaderProps> = ({
   isTrackListOpen, setIsTrackListOpen, isSidebarOpen, setIsSidebarOpen, isCompositionOpen, setIsCompositionOpen,
   currentProjectName, onSelectMaster, selectedTrackId
 }) => {
+
+  // --- DEBUG LOGGING ---
+  useEffect(() => {
+      console.log("%c[HEADER DEBUG]", "color: yellow; font-weight: bold;");
+      console.log("Current Project Name:", currentProjectName);
+      console.log("Has Save Function:", !!saveProjectToDisk);
+      console.log("Window Width:", window.innerWidth);
+      console.log("Is Mobile Mode:", window.innerWidth < 768);
+  }, [currentProjectName, saveProjectToDisk]);
+
   return (
     <header className="h-16 border-b border-[var(--border-color)] flex items-center justify-between px-4 bg-[var(--bg-panel)] shrink-0 z-40 shadow-md relative">
         {/* Left: Mobile Menu / Branding */}
@@ -143,6 +152,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Right: Tools / Mixer Toggle */}
         <div className="flex items-center gap-3 justify-end w-auto md:w-1/4">
             
+            {/* Desktop Actions */}
             <div className="hidden md:flex items-center gap-2">
                 <button 
                     onClick={() => canUndo && undoTracks()} 
@@ -164,8 +174,15 @@ export const Header: React.FC<HeaderProps> = ({
                     {isFullScreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
                 </button>
                 
-                {/* SAVE BUTTON (CLOUD) */}
-                <button onClick={saveProjectToDisk} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" title="Salvar na Nuvem (Ctrl+S)">
+                {/* SAVE BUTTON (CLOUD) - Desktop */}
+                <button 
+                    onClick={() => {
+                        console.log("Botão Salvar Clicado (Desktop)");
+                        saveProjectToDisk();
+                    }} 
+                    className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" 
+                    title="Salvar na Nuvem (Ctrl+S)"
+                >
                     <CloudUpload className={`w-5 h-5 ${currentProjectName ? 'text-[var(--accent)]' : ''}`} />
                 </button>
                 
@@ -173,6 +190,18 @@ export const Header: React.FC<HeaderProps> = ({
                 <button onClick={exportWav} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" title="Exportar WAV"><Download className="w-5 h-5" /></button>
             </div>
             
+            {/* MOBILE SAVE BUTTON (Explicitly visible on mobile) */}
+            <button 
+                onClick={() => {
+                    console.log("Botão Salvar Clicado (Mobile)");
+                    saveProjectToDisk();
+                }}
+                className="md:hidden p-2 text-[var(--accent)] hover:bg-[var(--bg-element)] rounded border border-[var(--border-color)]"
+                title="Salvar"
+            >
+                <CloudUpload className="w-5 h-5" />
+            </button>
+
             <button className="md:hidden p-2 text-[var(--text-muted)]"><MoreVertical className="w-5 h-5" /></button>
 
             <div className="h-6 w-[1px] bg-[var(--border-color)] mx-1 hidden md:block"></div>
