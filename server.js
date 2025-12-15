@@ -3,7 +3,7 @@ import mysql from 'mysql2/promise';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { MercadoPagoConfig, Preference } from 'mercadopago';
+import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import SibApiV3Sdk from 'sib-api-v3-sdk';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -103,6 +103,7 @@ const upload = multer({ storage: storage });
 
 // 4. External APIs
 const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || 'TEST-TOKEN' });
+const mpPayment = new Payment(mpClient);
 
 // --- INICIALIZAÇÃO E MIGRAÇÃO DO BANCO DE DADOS ---
 
@@ -310,7 +311,66 @@ app.post('/api/assets/upload', authenticateToken, upload.single('file'), async (
     }
 });
 
-// 4. Pagamentos
+// 4. Pagamentos (PROCESSAMENTO VIA BRICK)
+app.post('/api/checkout/process_payment', authenticateToken, async (req, res) => {
+    try {
+        const { transaction_amount, description, payment_method_id, email, token, installments, issuer_id, identification } = req.body;
+
+        // Monta o payload para o Mercado Pago
+        const paymentData = {
+            transaction_amount: Number(transaction_amount),
+            description: description || 'Monochrome Studio Subscription',
+            payment_method_id: payment_method_id,
+            payer: {
+                email: email,
+                identification: identification
+            },
+        };
+
+        // Se for cartão de crédito, adiciona os dados extras
+        if (payment_method_id !== 'pix') {
+            paymentData.token = token;
+            paymentData.installments = Number(installments);
+            paymentData.issuer_id = issuer_id;
+        }
+
+        console.log(`[MERCADO PAGO] Processando: ${payment_method_id} - R$${transaction_amount} - User: ${req.user.id}`);
+
+        const response = await mpPayment.create({ body: paymentData });
+        
+        const status = response.status;
+        const detail = response.status_detail;
+
+        // Se aprovado, libera o acesso no banco
+        if (status === 'approved') {
+            if (pool) {
+                await pool.query('UPDATE users SET is_subscribed = TRUE WHERE id = ?', [req.user.id]);
+                console.log(`✅ User ${req.user.id} subscribed successfully via Brick.`);
+            }
+        }
+
+        // Retorna o resultado para o frontend
+        const result = {
+            status: status === 'approved' ? 'APPROVED' : (status === 'pending' || status === 'in_process' ? 'PENDING' : 'DECLINED'),
+            message: detail,
+            id: response.id
+        };
+
+        // Se for PIX, retorna o QR Code
+        if (payment_method_id === 'pix' && response.point_of_interaction) {
+            result.qrCodeBase64 = response.point_of_interaction.transaction_data.qr_code_base64;
+            result.qrCodeText = response.point_of_interaction.transaction_data.qr_code;
+        }
+
+        res.json(result);
+
+    } catch (e) {
+        console.error("❌ Mercado Pago Brick Error:", e);
+        res.status(500).json({ message: 'Erro ao processar pagamento', error: e.message });
+    }
+});
+
+// Rota LEGACY para preferência (caso ainda seja usada)
 app.post('/api/checkout/create-preference', authenticateToken, async (req, res) => {
     try {
         const preference = new Preference(mpClient);

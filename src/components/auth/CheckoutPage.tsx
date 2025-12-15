@@ -1,37 +1,114 @@
-
-import React, { useState } from 'react';
-import { Check, Zap, Cloud, Infinity, ShieldCheck } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Check, Zap, Cloud, Infinity, ShieldCheck, Loader2, CreditCard } from 'lucide-react';
 import { api } from '../../services/api';
 
 interface CheckoutPageProps {
     user: { id: number, email: string, name: string };
-    onSuccess: () => void; // Chamado para atualizar estado local após pagamento (simulado ou real)
+    onSuccess: () => void;
 }
 
 export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) => {
-    const [isLoading, setIsLoading] = useState(false);
+    const [brickReady, setBrickReady] = useState(false);
+    const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'approved' | 'pending' | 'error'>('idle');
+    const [pixData, setPixData] = useState<{ qrCodeBase64: string, qrCodeText: string } | null>(null);
 
-    const handleSubscribe = async () => {
-        setIsLoading(true);
-        try {
-            // 1. Cria a preferência no backend
-            const { data } = await api.post('/checkout/create-preference', {
-                userId: user.id,
-                email: user.email
-            });
-
-            // 2. Redireciona para o Mercado Pago
-            if (data.init_point) {
-                window.location.href = data.init_point;
+    useEffect(() => {
+        const loadBrick = async () => {
+            // @ts-ignore
+            if (!window.MercadoPago) {
+                console.error("SDK Mercado Pago não carregado.");
+                return;
             }
-        } catch (error) {
-            console.error("Erro no checkout:", error);
-            alert("Erro ao iniciar pagamento.");
-            setIsLoading(false);
-        }
-    };
 
-    // Função "Dev" para testar o fluxo sem pagar de verdade (Remover em prod real)
+            // @ts-ignore
+            const mp = new window.MercadoPago('APP_USR-f1eec6a4-0441-4fb8-af10-6b904d6f87eb', {
+                locale: 'pt-BR'
+            });
+            
+            const bricksBuilder = mp.bricks();
+
+            const settings = {
+                initialization: {
+                    amount: 49.90,
+                    payer: {
+                        email: user.email,
+                    },
+                },
+                customization: {
+                    visual: {
+                        style: {
+                            theme: 'dark', // Tema escuro para combinar com Monochrome
+                        }
+                    },
+                    paymentMethods: {
+                        creditCard: "all",
+                        bankTransfer: "all", // Pix
+                        maxInstallments: 12
+                    },
+                },
+                callbacks: {
+                    onReady: () => {
+                        setBrickReady(true);
+                    },
+                    onSubmit: async ({ selectedPaymentMethod, formData }: any) => {
+                        setPaymentStatus('processing');
+                        
+                        try {
+                            // Se for cartão, o token vem no formData. Se for Pix, não tem token.
+                            const payload = {
+                                transaction_amount: formData.transaction_amount,
+                                description: "Monochrome Studio Pro",
+                                payment_method_id: formData.payment_method_id,
+                                email: formData.payer.email,
+                                identification: formData.payer.identification,
+                                // Dados opcionais (cartão)
+                                token: formData.token,
+                                installments: formData.installments,
+                                issuer_id: formData.issuer_id,
+                            };
+
+                            const { data } = await api.post('/checkout/process_payment', payload);
+
+                            if (data.status === 'APPROVED') {
+                                setPaymentStatus('approved');
+                                setTimeout(() => onSuccess(), 2000); // Aguarda animação e libera
+                            } else if (data.status === 'PENDING' && data.qrCodeBase64) {
+                                // Caso Pix
+                                setPixData({
+                                    qrCodeBase64: data.qrCodeBase64,
+                                    qrCodeText: data.qrCodeText
+                                });
+                                setPaymentStatus('pending');
+                            } else {
+                                setPaymentStatus('error');
+                                alert("Pagamento recusado: " + (data.message || 'Verifique os dados.'));
+                            }
+
+                        } catch (error) {
+                            console.error(error);
+                            setPaymentStatus('error');
+                            alert("Erro de comunicação com o servidor.");
+                        }
+                    },
+                    onError: (error: any) => {
+                        console.error(error);
+                    },
+                },
+            };
+
+            // Limpa container antes de criar (para evitar duplicatas em re-renders)
+            const container = document.getElementById('paymentBrick_container');
+            if (container) container.innerHTML = '';
+
+            await bricksBuilder.create("payment", "paymentBrick_container", settings);
+        };
+
+        // Pequeno delay para garantir que o script carregou ou o container montou
+        const timer = setTimeout(loadBrick, 500);
+        return () => clearTimeout(timer);
+    }, [user]);
+
+    // Função "Dev" para testar o fluxo sem pagar de verdade
     const handleDevActivation = async () => {
         if (confirm("MODO DEV: Ativar assinatura grátis para teste?")) {
             await api.post('/dev/activate-sub', { userId: user.id });
@@ -41,65 +118,111 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
 
     return (
         <div className="fixed inset-0 bg-[#050505] flex items-center justify-center p-4 overflow-y-auto">
-            <div className="w-full max-w-4xl grid md:grid-cols-2 gap-0 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl bg-[#0a0a0a]">
+            <div className="w-full max-w-5xl grid md:grid-cols-2 gap-0 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl bg-[#0a0a0a]">
                 
                 {/* Left: Value Prop */}
-                <div className="p-8 md:p-12 flex flex-col justify-between bg-zinc-900/30">
+                <div className="p-8 md:p-12 flex flex-col justify-between bg-zinc-900/30 border-r border-zinc-800">
                     <div>
-                        <h2 className="text-3xl font-black text-white mb-6 tracking-tighter">DESBLOQUEIE SEU POTENCIAL</h2>
-                        <div className="space-y-4">
+                        <h2 className="text-3xl font-black text-white mb-6 tracking-tighter">ASSINATURA PRO</h2>
+                        <div className="space-y-4 mb-8">
                             <div className="flex items-start gap-3">
-                                <div className="p-1 bg-green-500/10 rounded border border-green-500/20"><Check className="w-4 h-4 text-green-500" /></div>
-                                <div><h4 className="text-white font-bold text-sm">Projetos Ilimitados</h4><p className="text-zinc-500 text-xs">Crie quantas músicas quiser sem restrições.</p></div>
+                                <div className="p-1 bg-white/10 rounded border border-white/20"><Check className="w-4 h-4 text-white" /></div>
+                                <div><h4 className="text-white font-bold text-sm">Projetos Ilimitados</h4><p className="text-zinc-500 text-xs">Sem limites para sua criatividade.</p></div>
                             </div>
                             <div className="flex items-start gap-3">
-                                <div className="p-1 bg-purple-500/10 rounded border border-purple-500/20"><Zap className="w-4 h-4 text-purple-500" /></div>
-                                <div><h4 className="text-white font-bold text-sm">AI Mixing & Mastering</h4><p className="text-zinc-500 text-xs">Acesso à nossa IA de engenharia de áudio.</p></div>
+                                <div className="p-1 bg-white/10 rounded border border-white/20"><Zap className="w-4 h-4 text-white" /></div>
+                                <div><h4 className="text-white font-bold text-sm">AI Mixing & Mastering</h4><p className="text-zinc-500 text-xs">Engenharia de áudio automática.</p></div>
                             </div>
                             <div className="flex items-start gap-3">
-                                <div className="p-1 bg-blue-500/10 rounded border border-blue-500/20"><Cloud className="w-4 h-4 text-blue-500" /></div>
-                                <div><h4 className="text-white font-bold text-sm">Cloud Storage</h4><p className="text-zinc-500 text-xs">Salve seus projetos na nuvem com segurança.</p></div>
+                                <div className="p-1 bg-white/10 rounded border border-white/20"><Cloud className="w-4 h-4 text-white" /></div>
+                                <div><h4 className="text-white font-bold text-sm">Cloud Storage</h4><p className="text-zinc-500 text-xs">Backup seguro na nuvem.</p></div>
                             </div>
                             <div className="flex items-start gap-3">
-                                <div className="p-1 bg-orange-500/10 rounded border border-orange-500/20"><Infinity className="w-4 h-4 text-orange-500" /></div>
-                                <div><h4 className="text-white font-bold text-sm">Efeitos Premium</h4><p className="text-zinc-500 text-xs">Acesso à suite completa de plugins (Pocket Series).</p></div>
+                                <div className="p-1 bg-white/10 rounded border border-white/20"><Infinity className="w-4 h-4 text-white" /></div>
+                                <div><h4 className="text-white font-bold text-sm">Plugins Premium</h4><p className="text-zinc-500 text-xs">Acesso à Pocket Series completa.</p></div>
                             </div>
+                        </div>
+                        
+                        <div className="bg-[#050505] p-6 rounded-xl border border-zinc-800 text-center">
+                            <span className="text-zinc-500 text-xs uppercase tracking-widest font-bold">Total a pagar</span>
+                            <div className="text-4xl font-black text-white mt-1">R$ 49,90</div>
+                            <span className="text-zinc-600 text-[10px]">/mês</span>
                         </div>
                     </div>
-                    <div className="mt-8 pt-8 border-t border-zinc-800">
+                    
+                    <div className="mt-8 flex items-center justify-between">
                         <div className="flex items-center gap-2 text-zinc-500 text-xs">
                             <ShieldCheck className="w-4 h-4" />
-                            Pagamento seguro via Mercado Pago. Cancele quando quiser.
+                            Ambiente Seguro
                         </div>
+                        <button onClick={handleDevActivation} className="text-[9px] text-zinc-800 hover:text-zinc-600 font-mono">
+                            dev_bypass
+                        </button>
                     </div>
                 </div>
 
-                {/* Right: Pricing Card */}
-                <div className="p-8 md:p-12 bg-[#050505] flex flex-col items-center justify-center text-center border-l border-zinc-800 relative">
-                    <div className="absolute top-0 right-0 bg-white text-black text-[10px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-widest">
-                        Recomendado
-                    </div>
-
-                    <h3 className="text-zinc-400 font-bold uppercase tracking-widest text-sm mb-4">Assinatura Pro</h3>
-                    <div className="flex items-baseline gap-1 mb-2">
-                        <span className="text-5xl font-black text-white tracking-tighter">R$ 49,90</span>
-                        <span className="text-zinc-500 font-medium">/mês</span>
-                    </div>
-                    <p className="text-zinc-500 text-xs mb-8 max-w-[200px]">
-                        Acesso total imediato. Cobrança recorrente mensal.
-                    </p>
-
-                    <button 
-                        onClick={handleSubscribe}
-                        disabled={isLoading}
-                        className="w-full py-4 bg-white text-black font-bold text-sm uppercase tracking-widest rounded-xl hover:bg-zinc-200 transition-all shadow-[0_0_30px_rgba(255,255,255,0.15)] mb-4"
-                    >
-                        {isLoading ? 'Redirecionando...' : 'Assinar Agora'}
-                    </button>
+                {/* Right: Payment Brick */}
+                <div className="bg-[#0a0a0a] relative flex flex-col">
                     
-                    <button onClick={handleDevActivation} className="text-[10px] text-zinc-700 hover:text-zinc-500 underline">
-                        Restaurar compras / Modo Dev
-                    </button>
+                    {/* Loading State Overlay */}
+                    {(!brickReady || paymentStatus === 'processing') && (
+                        <div className="absolute inset-0 bg-[#0a0a0a]/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-4">
+                            <Loader2 className="w-8 h-8 text-white animate-spin" />
+                            <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest">
+                                {paymentStatus === 'processing' ? 'Processando Pagamento...' : 'Carregando Checkout...'}
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Success State */}
+                    {paymentStatus === 'approved' && (
+                        <div className="absolute inset-0 bg-[#0a0a0a] z-50 flex flex-col items-center justify-center gap-6 p-8 text-center animate-in fade-in zoom-in duration-300">
+                            <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(34,197,94,0.4)]">
+                                <Check className="w-10 h-10 text-black" />
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-bold text-white mb-2">Pagamento Aprovado!</h3>
+                                <p className="text-zinc-500 text-sm">Bem-vindo ao Monochrome Pro. Redirecionando...</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Pix State */}
+                    {paymentStatus === 'pending' && pixData && (
+                        <div className="absolute inset-0 bg-[#0a0a0a] z-50 flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-300 overflow-y-auto">
+                            <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                Aguardando PIX
+                            </h3>
+                            
+                            <div className="bg-white p-2 rounded-lg mb-6">
+                                <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="QR Code Pix" className="w-48 h-48" />
+                            </div>
+
+                            <div className="w-full bg-zinc-900 border border-zinc-800 rounded p-3 mb-4">
+                                <p className="text-[10px] text-zinc-500 uppercase font-bold mb-1 text-left">Copia e Cola</p>
+                                <input 
+                                    type="text" 
+                                    readOnly 
+                                    value={pixData.qrCodeText} 
+                                    className="w-full bg-transparent text-zinc-300 text-xs font-mono outline-none truncate"
+                                    onClick={(e) => e.currentTarget.select()}
+                                />
+                            </div>
+
+                            <button 
+                                onClick={onSuccess} 
+                                className="bg-white text-black px-6 py-3 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-zinc-200 transition-colors w-full"
+                            >
+                                Já realizei o pagamento
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Brick Container */}
+                    <div className="p-6 md:p-8 flex-1 overflow-y-auto custom-scrollbar">
+                        <div id="paymentBrick_container"></div>
+                    </div>
                 </div>
 
             </div>
