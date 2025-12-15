@@ -21,34 +21,63 @@ export const CompositionAssistant: React.FC<CompositionAssistantProps> = ({ isOp
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const rhymeColRef = useRef<HTMLDivElement>(null);
 
-  // --- Lógica de Rima ---
+  // --- Lógica de Rima Inteligente por Estrofe ---
   useEffect(() => {
     const lines = lyrics.split('\n');
-    const endings: { [suffix: string]: string } = {};
-    let nextChar = 65; // Código ASCII para 'A'
+    const schemes: string[] = [];
     
-    const schemes = lines.map(line => {
-        const trimmed = line.trim();
-        if (!trimmed) return "";
+    // Estado volátil para cada estrofe
+    let currentStanzaEndings: { [suffix: string]: string } = {};
+    let nextChar = 65; // Começa em 'A'
 
-        // Remove pontuação e pega a última palavra
+    lines.forEach(line => {
+        const trimmed = line.trim();
+        
+        // Se a linha for vazia, consideramos uma quebra de estrofe.
+        // Reiniciamos o mapa de rimas e o contador.
+        if (!trimmed) {
+            schemes.push(""); 
+            currentStanzaEndings = {}; // Limpa memória da estrofe anterior
+            nextChar = 65; // Reseta para A
+            return;
+        }
+
+        // Limpeza: remove pontuação e caracteres especiais, mantendo acentos
+        // Pega a última palavra
         const cleanLine = trimmed.replace(/[.,/#!$%^&*;:{}=\-_`~()?"']/g, "").toLowerCase();
         const words = cleanLine.split(/\s+/);
         const lastWord = words[words.length - 1];
         
-        if (!lastWord || lastWord.length < 2) return "?";
-
-        // Pega as últimas 3 letras (ou a palavra toda se for curta) como "som" da rima
-        // Isso é uma aproximação fonética simples
-        const suffix = lastWord.length > 3 ? lastWord.slice(-3) : lastWord;
-
-        if (!endings[suffix]) {
-            endings[suffix] = String.fromCharCode(nextChar);
-            nextChar++;
-            if (nextChar > 90) nextChar = 65; // Volta para A se passar de Z (simplificado)
+        if (!lastWord) {
+            schemes.push("?");
+            return;
         }
-        
-        return endings[suffix];
+
+        // --- Algoritmo de Sufixo ---
+        // Para ser mais "permissivo" e capturar rimas imperfeitas ou curtas,
+        // pegamos os últimos 2 caracteres se a palavra tiver 3 ou mais.
+        // Se tiver 2 ou menos, pegamos a palavra inteira.
+        let suffix = lastWord;
+        if (lastWord.length >= 3) {
+            suffix = lastWord.slice(-2); // Pega as duas últimas letras (ex: "casa" -> "sa")
+        } else {
+            suffix = lastWord;
+        }
+
+        // Verifica se esse final já apareceu nesta estrofe
+        if (currentStanzaEndings[suffix]) {
+            schemes.push(currentStanzaEndings[suffix]);
+        } else {
+            // Nova rima encontrada nesta estrofe
+            const letter = String.fromCharCode(nextChar);
+            currentStanzaEndings[suffix] = letter;
+            schemes.push(letter);
+            
+            // Avança para a próxima letra (A -> B -> C...)
+            // Se passar de Z (90), volta para A (simplificação, ou poderia usar AA, AB...)
+            nextChar++;
+            if (nextChar > 90) nextChar = 65; 
+        }
     });
 
     setRhymeScheme(schemes);
@@ -63,7 +92,7 @@ export const CompositionAssistant: React.FC<CompositionAssistantProps> = ({ isOp
 
   // --- Bloqueio de Features ---
   const handleFeatureBlocked = () => {
-      alert("⚠️ RECURSO EM DESENVOLVIMENTO\n\nNo momento, foque na composição manual. A transcrição e geração por IA estarão disponíveis na próxima atualização.");
+      alert("⚠️ RECURSO EM DESENVOLVIMENTO\n\nApenas composições manuais estão disponíveis no momento. A transcrição de áudio e geração por IA chegarão em breve.");
   };
 
   const copyToClipboard = () => {
@@ -125,12 +154,12 @@ export const CompositionAssistant: React.FC<CompositionAssistantProps> = ({ isOp
             {/* Coluna de Estrutura de Rimas */}
             <div 
                 ref={rhymeColRef}
-                className="w-8 bg-[#0a0a0a] border-r border-zinc-800 flex flex-col items-center pt-6 pb-6 overflow-hidden select-none"
+                className="w-10 bg-[#0a0a0a] border-r border-zinc-800 flex flex-col items-center pt-6 pb-6 overflow-hidden select-none shrink-0"
                 style={{ fontSize: `${fontSize}px`, lineHeight: '1.5' }}
             >
                 {rhymeScheme.map((code, i) => (
                     <div key={i} className="h-[1.5em] w-full flex items-center justify-center text-[10px] font-bold text-zinc-500 font-mono">
-                        {code && <span className={`px-1 rounded ${code === '?' ? 'opacity-20' : 'bg-zinc-800 text-zinc-300'}`}>{code}</span>}
+                        {code && <span className={`w-6 text-center rounded ${code === '?' ? 'opacity-20' : 'bg-zinc-900 text-zinc-300 border border-zinc-800'}`}>{code}</span>}
                     </div>
                 ))}
             </div>
@@ -139,7 +168,9 @@ export const CompositionAssistant: React.FC<CompositionAssistantProps> = ({ isOp
             <textarea 
                 ref={textareaRef}
                 className="flex-1 bg-[#050505] text-zinc-300 p-6 resize-none focus:outline-none font-mono leading-[1.5] custom-scrollbar selection:bg-white selection:text-black placeholder-zinc-800 whitespace-pre"
-                placeholder="Comece a escrever sua obra prima..."
+                placeholder="Comece a escrever sua letra...
+As rimas serão detectadas automaticamente.
+Pule uma linha para iniciar uma nova estrofe (reinicia A, B...)."
                 value={lyrics}
                 onChange={(e) => setLyrics(e.target.value)}
                 onScroll={handleScroll}
