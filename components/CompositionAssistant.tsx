@@ -1,15 +1,17 @@
 
 import React, { useState } from 'react';
-import { PenTool, Wand2, Eraser, Save, Copy, Check, Sparkles, PanelRightClose, RefreshCw } from 'lucide-react';
+import { PenTool, Wand2, Save, Copy, Sparkles, PanelRightClose, Mic } from 'lucide-react';
 import { aiLyricsService } from '../services/AiLyricsService';
+import { Clip } from '../types';
 
 interface CompositionAssistantProps {
   isOpen: boolean;
   onClose: () => void;
   isMobile: boolean;
+  selectedClip?: Clip | null; // Receive selected clip
 }
 
-export const CompositionAssistant: React.FC<CompositionAssistantProps> = ({ isOpen, onClose, isMobile }) => {
+export const CompositionAssistant: React.FC<CompositionAssistantProps> = ({ isOpen, onClose, isMobile, selectedClip }) => {
   const [lyrics, setLyrics] = useState('');
   const [topic, setTopic] = useState('');
   const [genre, setGenre] = useState('Trap');
@@ -55,6 +57,22 @@ export const CompositionAssistant: React.FC<CompositionAssistantProps> = ({ isOp
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleTranscribe = async () => {
+      if (!selectedClip || !selectedClip.blob) {
+          alert("Selecione um clipe de áudio gravado na timeline primeiro.");
+          return;
+      }
+      setIsLoading(true);
+      try {
+          const text = await aiLyricsService.transcribeAudio(selectedClip.blob);
+          setLyrics(prev => prev ? prev + "\n\n[Transcribed]:\n" + text : text);
+      } catch (e) {
+          alert("Erro na transcrição.");
+      } finally {
+          setIsLoading(false);
+      }
   };
 
   const copyToClipboard = () => {
@@ -107,9 +125,19 @@ export const CompositionAssistant: React.FC<CompositionAssistantProps> = ({ isOp
 
         {activeTab === 'write' ? (
             <div className="flex-1 flex flex-col h-full">
+                <div className="p-2 border-b border-zinc-900 bg-[#080808]">
+                    <button 
+                        onClick={handleTranscribe}
+                        disabled={!selectedClip}
+                        className={`w-full flex items-center justify-center gap-2 py-2 rounded text-[10px] font-bold uppercase border transition-all ${selectedClip ? 'bg-zinc-900 text-white border-zinc-700 hover:bg-zinc-800' : 'bg-transparent text-zinc-600 border-zinc-800 cursor-not-allowed'}`}
+                        title="Selecione um clipe na timeline para transcrever"
+                    >
+                        <Mic className="w-3 h-3" /> Transcrever Audio Selecionado
+                    </button>
+                </div>
                 <textarea 
                     className="flex-1 bg-[#050505] text-zinc-300 p-6 resize-none focus:outline-none font-mono text-sm leading-relaxed custom-scrollbar selection:bg-white selection:text-black placeholder-zinc-800"
-                    placeholder="Escreva sua letra aqui..."
+                    placeholder="Escreva sua letra aqui ou use a transcrição..."
                     value={lyrics}
                     onChange={(e) => setLyrics(e.target.value)}
                     spellCheck={false}

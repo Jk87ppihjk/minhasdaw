@@ -57,6 +57,7 @@ export interface Track {
   pan: number; 
   muted: boolean;
   solo: boolean;
+  bypassFX: boolean; // Global bypass for this track
   clips: Clip[]; 
   effects: EffectSettings;
   activeEffects: string[]; 

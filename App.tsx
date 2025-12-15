@@ -81,6 +81,7 @@ export default function App() {
       pan: 0,
       muted: false,
       solo: false,
+      bypassFX: false,
       clips: [],
       effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() },
       activeEffects: ['proLimiter'] // Default limiter on master
@@ -469,14 +470,14 @@ export default function App() {
         if (trackIdToAdd) {
             setTracks(prev => prev.map(t => { if (t.id === trackIdToAdd) { const maxEnd = t.clips.reduce((max, c) => Math.max(max, c.startTime + c.duration), 0); newClip.startTime = maxEnd > 0 ? maxEnd + 1 : 0; return { ...t, clips: [...t.clips, newClip] } } return t; }));
         } else {
-            setTracks(prev => [...prev, { id: crypto.randomUUID(), name: file.name.replace(/\.[^/.]+$/, ""), type: TrackType.BEAT, volume: 0.8, pan: 0, muted: false, solo: false, clips: [newClip], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] }]);
+            setTracks(prev => [...prev, { id: crypto.randomUUID(), name: file.name.replace(/\.[^/.]+$/, ""), type: TrackType.BEAT, volume: 0.8, pan: 0, muted: false, solo: false, bypassFX: false, clips: [newClip], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] }]);
             setAudioState(prev => ({ ...prev, totalDuration: Math.max(prev.totalDuration, audioBuffer.duration + 10) }));
         }
     } catch (err) { alert("Failed to decode audio file."); }
   };
 
   const addNewTrack = () => {
-      setTracks(prev => [...prev, { id: crypto.randomUUID(), name: `Track ${tracks.length + 1}`, type: TrackType.VOCAL, volume: 0.8, pan: 0, muted: false, solo: false, clips: [], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] }]);
+      setTracks(prev => [...prev, { id: crypto.randomUUID(), name: `Track ${tracks.length + 1}`, type: TrackType.VOCAL, volume: 0.8, pan: 0, muted: false, solo: false, bypassFX: false, clips: [], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] }]);
       if (isMobile) setIsTrackListOpen(false);
   };
 
@@ -550,7 +551,7 @@ export default function App() {
         // Prepare track for recording
         let recTrackId = selectedTrackId;
         if (!tracks.find(t => t.id === selectedTrackId)?.type.includes('VOCAL')) {
-            const newTrack: Track = { id: crypto.randomUUID(), name: `Vocal Rec`, type: TrackType.VOCAL, volume: 1.0, pan: 0, muted: false, solo: false, clips: [], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] };
+            const newTrack: Track = { id: crypto.randomUUID(), name: `Vocal Rec`, type: TrackType.VOCAL, volume: 1.0, pan: 0, muted: false, solo: false, bypassFX: false, clips: [], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] };
             setTracks(prev => [...prev, newTrack]); 
             recTrackId = newTrack.id; 
             setSelectedTrackId(newTrack.id);
@@ -733,9 +734,23 @@ export default function App() {
       if (id === 'MASTER') {
           const updated = { ...masterTrack, ...updates };
           setMasterTrack(updated);
-          audioEngine.updateTrackSettings(updated);
+          // If bypassing FX, rebuild chain to reflect graph change
+          if (updates.bypassFX !== undefined) audioEngine.rebuildTrackEffects(updated);
+          else audioEngine.updateTrackSettings(updated);
       } else {
-          setTracks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+          setTracks(prev => prev.map(t => { 
+              if (t.id === id) { 
+                  const updated = { ...t, ...updates };
+                  // If bypassing FX or reordering, rebuild chain
+                  if (updates.bypassFX !== undefined || updates.activeEffects) {
+                      audioEngine.rebuildTrackEffects(updated);
+                  } else {
+                      audioEngine.updateTrackSettings(updated);
+                  }
+                  return updated;
+              } 
+              return t; 
+          }));
       }
   };
 
@@ -892,6 +907,7 @@ export default function App() {
   }, [draggingClipId, draggingTrackId, pixelsPerSecond, audioState.isPlaying, audioState.snapToGrid, audioState.bpm, tracks, togglePlay, resizingState]);
 
   const selectedTrack = selectedTrackId === 'MASTER' ? masterTrack : tracks.find(t => t.id === selectedTrackId);
+  const selectedClip = selectedTrack && selectedClipId ? selectedTrack.clips.find(c => c.id === selectedClipId) : null;
 
   // --- RENDER CONDITION: DASHBOARD VS DAW ---
   if (!currentProjectName) {
@@ -1093,6 +1109,7 @@ export default function App() {
             isOpen={isCompositionOpen}
             onClose={() => setIsCompositionOpen(false)}
             isMobile={isMobile}
+            selectedClip={selectedClip}
         />
 
         {/* Backdrop for Mobile Sidebar */}

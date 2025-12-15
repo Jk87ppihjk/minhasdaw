@@ -8,6 +8,54 @@ export class AiLyricsService {
     this.genAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
   }
 
+  // Helper para converter Blob em Base64 string limpa
+  private async blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        // Remove o header do Data URL (ex: "data:audio/wav;base64,")
+        const base64Data = base64String.split(',')[1];
+        resolve(base64Data);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async transcribeAudio(audioBlob: Blob): Promise<string> {
+    try {
+      const base64Data = await this.blobToBase64(audioBlob);
+      
+      const prompt = `
+        Transcreva o áudio a seguir com precisão.
+        Se for uma música, formate como uma letra (versos e estrofes).
+        Ignore ruídos de fundo e foque na voz.
+        Retorne APENAS o texto transcrito.
+      `;
+
+      const result = await this.genAI.models.generateContent({
+        model: "gemini-2.5-flash", // 1.5 Flash suporta áudio nativo
+        contents: {
+            parts: [
+                {
+                    inlineData: {
+                        mimeType: audioBlob.type || 'audio/wav',
+                        data: base64Data
+                    }
+                },
+                { text: prompt }
+            ]
+        },
+      });
+
+      return result.text || "Não foi possível transcrever.";
+    } catch (error) {
+      console.error("Audio Transcription Error:", error);
+      throw error;
+    }
+  }
+
   async generateLyrics(topic: string, genre: string, mood: string): Promise<string> {
     try {
       const prompt = `

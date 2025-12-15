@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Settings2, PanelRightClose, Disc, Plus, Trash2, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Settings2, PanelRightClose, Disc, Plus, Trash2, SlidersHorizontal, Sparkles, ArrowUp, ArrowDown, Power, Ban } from 'lucide-react';
 import { Track } from '../../types';
 import { Knob } from '../Knob';
 import { EffectRegistry } from '../../services/EffectRegistry';
@@ -55,6 +55,43 @@ export const MixerSidebar: React.FC<MixerSidebarProps> = ({
       }
   };
 
+  const moveEffect = (track: Track, index: number, direction: 'up' | 'down') => {
+      const newIndex = direction === 'up' ? index - 1 : index + 1;
+      if (newIndex < 0 || newIndex >= track.activeEffects.length) return;
+
+      const newEffectsOrder = [...track.activeEffects];
+      [newEffectsOrder[index], newEffectsOrder[newIndex]] = [newEffectsOrder[newIndex], newEffectsOrder[index]];
+
+      if (track.id === 'MASTER' && setMasterTrack) {
+          setMasterTrack(prev => {
+              const updated = {...prev, activeEffects: newEffectsOrder};
+              audioEngine.rebuildTrackEffects(updated);
+              return updated;
+          });
+      } else {
+          updateTrack(track.id, { activeEffects: newEffectsOrder });
+          // Force rebuild in engine
+          setTimeout(() => {
+             const t = track.id === 'MASTER' ? undefined : (audioEngine as any).effectsManager.getTrackChain(track.id);
+             // Rebuild handled by updateTrack but explicitly ensuring order
+             const updatedTrack = { ...track, activeEffects: newEffectsOrder };
+             audioEngine.rebuildTrackEffects(updatedTrack);
+          }, 0);
+      }
+  };
+
+  const toggleEffect = (track: Track, effectId: string) => {
+      const currentSettings = track.effects[effectId];
+      if (!currentSettings) return;
+      
+      const newActive = !currentSettings.active;
+      updateEffects(track.id, { [effectId]: { ...currentSettings, active: newActive } });
+  };
+
+  const isEffectActive = (track: Track, effectId: string) => {
+      return track.effects[effectId]?.active !== false; // Default to true if undefined
+  };
+
   return (
     <div 
         className={`
@@ -107,24 +144,52 @@ export const MixerSidebar: React.FC<MixerSidebarProps> = ({
                             </div>
                         </div>
                         
-                        <div className="flex flex-col gap-2 min-h-[100px]">
+                        {/* Global Bypass Button */}
+                        <button 
+                            onClick={() => updateTrack(selectedTrack.id, { bypassFX: !selectedTrack.bypassFX })}
+                            className={`w-full py-2 mb-2 rounded border font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${selectedTrack.bypassFX ? 'bg-red-500 text-white border-red-500 animate-pulse' : 'bg-transparent text-[var(--text-muted)] border-[var(--border-color)] hover:border-[var(--text-muted)]'}`}
+                        >
+                            <Ban className="w-3 h-3" /> {selectedTrack.bypassFX ? "FX Bypassed" : "Global Bypass"}
+                        </button>
+
+                        <div className="flex flex-col gap-2 min-h-[100px] relative">
+                            {selectedTrack.bypassFX && (
+                                <div className="absolute inset-0 bg-black/50 z-10 backdrop-blur-[1px] flex items-center justify-center rounded-lg pointer-events-none">
+                                    <span className="text-xs font-bold text-red-500 bg-black/80 px-3 py-1 rounded border border-red-900">BYPASSED</span>
+                                </div>
+                            )}
+
                             {selectedTrack.activeEffects.length === 0 && (
                                 <div className="text-center py-8 border-2 border-dashed border-[var(--border-color)] rounded-lg text-[var(--text-muted)] text-xs font-bold uppercase tracking-widest">
                                     Empty Chain
                                 </div>
                             )}
-                            {selectedTrack.activeEffects.map((effectId, index) => (
-                                <div key={`${effectId}-${index}`} className="group bg-[var(--bg-element)] border border-[var(--border-color)] rounded-md p-2 pl-3 flex items-center justify-between hover:border-[var(--text-muted)] transition-all shadow-sm relative overflow-hidden">
-                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-[var(--accent)]"></div>
-                                    <span className="text-xs font-bold text-[var(--text-main)] uppercase cursor-pointer flex-1 truncate hover:text-[var(--accent)]" onClick={() => setOpenedEffect({ trackId: selectedTrack.id, effectId })}>
-                                        {EffectRegistry.get(effectId)?.name || effectId}
-                                    </span>
-                                    <div className="flex gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => setOpenedEffect({ trackId: selectedTrack.id, effectId })} className="p-1 hover:bg-[var(--bg-main)] rounded"><SlidersHorizontal className="w-3 h-3 text-[var(--text-muted)]" /></button>
-                                        <button onClick={() => removeEffect(selectedTrack, index)} className="p-1 hover:bg-red-900/30 rounded"><Trash2 className="w-3 h-3 text-[var(--text-muted)] hover:text-red-500" /></button>
+                            
+                            {selectedTrack.activeEffects.map((effectId, index) => {
+                                const isActive = isEffectActive(selectedTrack, effectId);
+                                return (
+                                    <div key={`${effectId}-${index}`} className={`group bg-[var(--bg-element)] border border-[var(--border-color)] rounded-md p-1 pl-3 flex items-center justify-between hover:border-[var(--text-muted)] transition-all shadow-sm relative overflow-hidden ${!isActive ? 'opacity-60' : ''}`}>
+                                        <div className={`absolute left-0 top-0 bottom-0 w-1 ${isActive ? 'bg-[var(--accent)]' : 'bg-red-900'}`}></div>
+                                        
+                                        <div className="flex flex-col gap-0.5 mr-2">
+                                            <button onClick={() => moveEffect(selectedTrack, index, 'up')} className="text-[var(--text-muted)] hover:text-white p-0.5"><ArrowUp className="w-2 h-2" /></button>
+                                            <button onClick={() => moveEffect(selectedTrack, index, 'down')} className="text-[var(--text-muted)] hover:text-white p-0.5"><ArrowDown className="w-2 h-2" /></button>
+                                        </div>
+
+                                        <span className={`text-xs font-bold uppercase cursor-pointer flex-1 truncate hover:text-[var(--accent)] ${isActive ? 'text-[var(--text-main)]' : 'text-[var(--text-muted)] line-through'}`} onClick={() => setOpenedEffect({ trackId: selectedTrack.id, effectId })}>
+                                            {EffectRegistry.get(effectId)?.name || effectId}
+                                        </span>
+                                        
+                                        <div className="flex gap-1 items-center">
+                                            <button onClick={() => toggleEffect(selectedTrack, effectId)} className={`p-1.5 rounded transition-colors ${isActive ? 'text-green-500 hover:bg-green-900/20' : 'text-red-500 hover:bg-red-900/20'}`} title={isActive ? "Disable" : "Enable"}>
+                                                <Power className="w-3 h-3" />
+                                            </button>
+                                            <button onClick={() => setOpenedEffect({ trackId: selectedTrack.id, effectId })} className="p-1.5 hover:bg-[var(--bg-main)] rounded text-[var(--text-muted)] hover:text-white"><SlidersHorizontal className="w-3 h-3" /></button>
+                                            <button onClick={() => removeEffect(selectedTrack, index)} className="p-1.5 hover:bg-red-900/30 rounded text-[var(--text-muted)] hover:text-red-500"><Trash2 className="w-3 h-3" /></button>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 </div>

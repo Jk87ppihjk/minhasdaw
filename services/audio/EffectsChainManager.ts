@@ -164,6 +164,13 @@ export class EffectsChainManager {
     chain.parametricEQNodes = [];
     chain.tunerProcessor = undefined;
 
+    // GLOBAL BYPASS LOGIC:
+    // If bypassed, connect input directly to analyser (skipping all effects nodes)
+    if (track.bypassFX) {
+        chain.effectsInput.connect(chain.analyser);
+        return;
+    }
+
     let currentInput: AudioNode = chain.effectsInput;
 
     const chainNode = (node: AudioNode, id: string) => {
@@ -251,6 +258,9 @@ export class EffectsChainManager {
 
       // Pan
       chain.panner.pan.setTargetAtTime(track.pan, now, 0.1);
+
+      // Bypass check inside update loop (optimization: if bypassed, we skip individual param updates as nodes are disconnected)
+      if (track.bypassFX) return;
 
       track.activeEffects.forEach((effectId, index) => {
           const uniqueId = `${effectId}_${index}`;
