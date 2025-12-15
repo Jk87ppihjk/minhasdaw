@@ -1,4 +1,3 @@
-
 import express from 'express';
 import mysql from 'mysql2/promise';
 import cors from 'cors';
@@ -9,6 +8,9 @@ import SibApiV3Sdk from 'sib-api-v3-sdk';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
+import multer from 'multer';
 
 dotenv.config();
 
@@ -16,30 +18,70 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-app.use(cors());
-app.use(express.json());
+// --- MIDDLEWARE ---
+app.use(cors({
+    origin: '*', 
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.use(express.json({ limit: '50mb' })); 
+app.use(express.urlencoded({ extended: true }));
 
-// --- DATABASE CONNECTION ---
+// --- CONFIGURAÇÕES ---
+
+// 1. Database Configuration
 const dbConfig = {
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-    ssl: { rejectUnauthorized: false } // Necessário para alguns hosts remotos como Hostinger/Render
+    ssl: { rejectUnauthorized: false }, 
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
 };
 
 let pool;
-try {
-    pool = mysql.createPool(dbConfig);
-    console.log('Database configuration loaded.');
-} catch (err) {
-    console.error('Database config error:', err);
-}
-
-// Inicializar Tabela de Usuários se não existir
-const initDB = async () => {
+const connectDB = async () => {
     try {
-        const connection = await pool.getConnection();
+        pool = mysql.createPool(dbConfig);
+        console.log('✅ Database connected.');
+        await initDB();
+    } catch (err) {
+        console.error('❌ Database connection error:', err);
+    }
+};
+
+// 2. Cloudinary Configuration
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+// 3. Multer (Upload) Configuration
+const storage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+        folder: 'monochrome-projects',
+        resource_type: 'auto', 
+        allowed_formats: ['wav', 'mp3', 'webm', 'png', 'jpg'],
+    },
+});
+const upload = multer({ storage: storage });
+
+// 4. External APIs
+const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || 'TEST-TOKEN' });
+
+// --- INICIALIZAÇÃO E MIGRAÇÃO DO BANCO DE DADOS ---
+
+const initDB = async () => {
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        console.log('🔄 Checking database schema...');
+
+        // 1. Tabela de Usuários
         await connection.query(`
             CREATE TABLE IF NOT EXISTS users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -51,192 +93,231 @@ const initDB = async () => {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        connection.release();
-        console.log('Users table checked/created.');
+
+        // 2. Tabela de Projetos (Armazena o estado JSON da DAW)
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS projects (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                data LONGTEXT, 
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        `);
+
+        // 3. Tabela de Assets (Arquivos de áudio no Cloudinary)
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS assets (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                project_id INT,
+                public_id VARCHAR(255) NOT NULL,
+                url VARCHAR(512) NOT NULL,
+                format VARCHAR(50),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        `);
+
+        // Verificação de Colunas
+        const [columns] = await connection.query("SHOW COLUMNS FROM users LIKE 'is_subscribed'");
+        if (columns.length === 0) {
+            await connection.query("ALTER TABLE users ADD COLUMN is_subscribed BOOLEAN DEFAULT FALSE");
+            console.log("⚠️ Column 'is_subscribed' added to users table.");
+        }
+
+        console.log('✅ Database schema verified/updated.');
     } catch (error) {
-        console.error('Error initializing DB:', error);
+        console.error('❌ Error initializing DB:', error);
+    } finally {
+        if (connection) connection.release();
     }
 };
-initDB();
 
-// --- CONFIGURAÇÕES DE SERVIÇOS ---
+// --- MIDDLEWARES AUXILIARES ---
 
-// Mercado Pago
-const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.sendStatus(401);
 
-// Brevo (Email)
-const defaultClient = SibApiV3Sdk.ApiClient.instance;
-const apiKey = defaultClient.authentications['api-key'];
-apiKey.apiKey = process.env.BREVO_API_KEY;
-const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+    jwt.verify(token, process.env.JWT_SECRET || 'monochrome_secret_key', (err, user) => {
+        if (err) return res.sendStatus(403);
+        req.user = user;
+        next();
+    });
+};
 
-// --- ROTAS DE AUTENTICAÇÃO ---
+// --- ROTAS DA API ---
 
+// 1. Autenticação
 app.post('/api/auth/register', async (req, res) => {
     const { email, password, name } = req.body;
-
+    if (!email || !password) return res.status(400).json({ message: 'Email and password required' });
+    
     try {
-        const [existing] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
-        if (existing.length > 0) {
-            return res.status(400).json({ message: 'Email já cadastrado.' });
-        }
-
         const hashedPassword = await bcrypt.hash(password, 10);
         const [result] = await pool.query(
-            'INSERT INTO users (email, password, name) VALUES (?, ?, ?)',
+            'INSERT INTO users (email, password, name) VALUES (?, ?, ?)', 
             [email, hashedPassword, name]
         );
-
-        // Enviar Email de Boas-Vindas
-        try {
-            const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-            sendSmtpEmail.subject = "Bem-vindo ao Monochrome Studio!";
-            sendSmtpEmail.htmlContent = `<html><body><h1>Olá ${name},</h1><p>Sua conta foi criada com sucesso. Prepare-se para produzir hits.</p></body></html>`;
-            sendSmtpEmail.sender = { "name": "Monochrome Team", "email": process.env.SENDER_EMAIL };
-            sendSmtpEmail.to = [{ "email": email, "name": name }];
-            await apiInstance.sendTransacEmail(sendSmtpEmail);
-        } catch (emailErr) {
-            console.error("Brevo Error:", emailErr);
+        
+        const token = jwt.sign({ id: result.insertId, email }, process.env.JWT_SECRET || 'monochrome_secret_key');
+        res.json({ token, user: { id: result.insertId, email, name, is_subscribed: false } });
+    } catch (e) {
+        if (e.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ message: 'Email already exists' });
         }
-
-        const token = jwt.sign({ id: result.insertId, email }, process.env.JWT_SECRET, { expiresIn: '7d' });
-
-        res.status(201).json({ 
-            token, 
-            user: { id: result.insertId, email, name, is_subscribed: false } 
-        });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Erro no servidor.' });
+        res.status(500).json({ message: 'Error registering user', error: e.message });
     }
 });
 
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
+    try {
+        const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+        if (rows.length === 0) return res.status(400).json({ message: 'User not found' });
+        
+        const user = rows[0];
+        if (await bcrypt.compare(password, user.password)) {
+            const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET || 'monochrome_secret_key');
+            res.json({ token, user: { id: user.id, email: user.email, name: user.name, is_subscribed: !!user.is_subscribed } });
+        } else {
+            res.status(403).json({ message: 'Invalid password' });
+        }
+    } catch (e) {
+        res.status(500).json({ message: 'Login error' });
+    }
+});
+
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT id, email, name, is_subscribed FROM users WHERE id = ?', [req.user.id]);
+        if (rows.length > 0) res.json(rows[0]);
+        else res.sendStatus(404);
+    } catch (e) {
+        res.sendStatus(500);
+    }
+});
+
+// 2. Gerenciamento de Projetos
+app.get('/api/projects', authenticateToken, async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT id, name, updated_at FROM projects WHERE user_id = ? ORDER BY updated_at DESC', [req.user.id]);
+        res.json(rows);
+    } catch (e) {
+        res.status(500).json({ message: 'Error loading projects' });
+    }
+});
+
+app.post('/api/projects/save', authenticateToken, async (req, res) => {
+    const { name, data } = req.body;
+    if (!name || !data) return res.status(400).json({ message: 'Missing name or data' });
 
     try {
-        const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
-        if (users.length === 0) return res.status(400).json({ message: 'Credenciais inválidas.' });
+        // Verifica se projeto com mesmo nome existe para este usuário
+        const [existing] = await pool.query('SELECT id FROM projects WHERE user_id = ? AND name = ?', [req.user.id, name]);
+        
+        if (existing.length > 0) {
+            await pool.query('UPDATE projects SET data = ? WHERE id = ?', [JSON.stringify(data), existing[0].id]);
+        } else {
+            await pool.query('INSERT INTO projects (user_id, name, data) VALUES (?, ?, ?)', [req.user.id, name, JSON.stringify(data)]);
+        }
+        res.json({ success: true });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'Error saving project' });
+    }
+});
 
-        const user = users[0];
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) return res.status(400).json({ message: 'Credenciais inválidas.' });
+app.post('/api/projects/load', authenticateToken, async (req, res) => {
+    const { name } = req.body;
+    try {
+        const [rows] = await pool.query('SELECT data FROM projects WHERE user_id = ? AND name = ?', [req.user.id, name]);
+        if (rows.length > 0) {
+            // Retorna o JSON diretamente
+            res.json(JSON.parse(rows[0].data));
+        } else {
+            res.status(404).json({ message: 'Project not found' });
+        }
+    } catch (e) {
+        res.status(500).json({ message: 'Error loading project' });
+    }
+});
 
-        const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
-
+// 3. Upload de Assets (Áudio)
+app.post('/api/assets/upload', authenticateToken, upload.single('file'), async (req, res) => {
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+    
+    try {
+        // Salva referência no DB
+        await pool.query('INSERT INTO assets (user_id, public_id, url, format) VALUES (?, ?, ?, ?)', 
+            [req.user.id, req.file.filename, req.file.path, req.file.mimetype]);
+            
         res.json({ 
-            token, 
-            user: { 
-                id: user.id, 
-                email: user.email, 
-                name: user.name, 
-                is_subscribed: user.is_subscribed 
-            } 
+            success: true,
+            url: req.file.path, 
+            public_id: req.file.filename,
+            format: req.file.mimetype
         });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Erro no servidor.' });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'Error saving asset info' });
     }
 });
 
-app.get('/api/auth/me', async (req, res) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ message: 'No token' });
-
+// 4. Pagamentos (Mercado Pago)
+app.post('/api/checkout/create-preference', authenticateToken, async (req, res) => {
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const [users] = await pool.query('SELECT id, email, name, is_subscribed, subscription_end FROM users WHERE id = ?', [decoded.id]);
-        if (users.length === 0) return res.status(404).json({ message: 'User not found' });
-        
-        res.json(users[0]);
-    } catch (error) {
-        res.status(401).json({ message: 'Invalid token' });
-    }
-});
-
-// --- ROTAS DE PAGAMENTO ---
-
-app.post('/api/checkout/create-preference', async (req, res) => {
-    const { userId, email } = req.body;
-
-    try {
-        const preference = new Preference(client);
-        
+        const preference = new Preference(mpClient);
         const result = await preference.create({
             body: {
-                items: [
-                    {
-                        id: 'monochrome-pro',
-                        title: 'Assinatura Monochrome Studio PRO',
-                        quantity: 1,
-                        unit_price: 49.90,
-                        currency_id: 'BRL',
-                        description: 'Acesso ilimitado à DAW e recursos de IA.'
-                    }
-                ],
-                payer: {
-                    email: email
-                },
-                external_reference: userId.toString(), // ID do usuário para identificar no webhook
+                items: [{ title: 'Monochrome Pro Subscription', quantity: 1, unit_price: 49.90, currency_id: 'BRL' }],
+                payer: { email: req.user.email },
                 back_urls: {
-                    success: `${req.headers.origin}/?status=success`,
-                    failure: `${req.headers.origin}/?status=failure`,
-                    pending: `${req.headers.origin}/?status=pending`
+                    success: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/?status=success`,
+                    failure: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/?status=failure`,
                 },
                 auto_return: 'approved',
-                notification_url: `${req.protocol}://${req.get('host')}/api/checkout/webhook` // Em produção, use HTTPS real
             }
         });
-
         res.json({ init_point: result.init_point });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Erro ao criar pagamento.' });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'Payment error' });
     }
 });
 
-app.post('/api/checkout/webhook', async (req, res) => {
-    const { type, data } = req.body;
-
-    if (type === 'payment') {
-        try {
-            // Em um app real, consultamos o Mercado Pago para validar o status
-            // const payment = await payment.get({ id: data.id });
-            // Mas aqui simplificamos assumindo que o webhook vem de uma fonte confiável (deveria validar assinatura)
-            
-            // Para simplicidade neste exemplo, assumimos sucesso se recebermos o hook
-            // Precisaríamos pegar o external_reference (userId) do objeto de pagamento
-            
-            // Simulação: Ativa a assinatura para o usuário (em produção, buscaria o pagamento real pelo ID)
-            // const userId = payment.external_reference;
-            // await pool.query('UPDATE users SET is_subscribed = TRUE, subscription_end = DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE id = ?', [userId]);
-            
-            console.log("Webhook received:", data.id);
-        } catch (error) {
-            console.error("Webhook error:", error);
-        }
+// Rota de desenvolvimento para ativar assinatura sem pagar
+app.post('/api/dev/activate-sub', authenticateToken, async (req, res) => {
+    try {
+        await pool.query('UPDATE users SET is_subscribed = TRUE WHERE id = ?', [req.user.id]);
+        res.json({ success: true, message: 'Subscription activated (DEV MODE)' });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
-    res.status(200).send();
 });
 
-// Simulação de Sucesso (Rota de Dev para ativar manualmente se webhook falhar em localhost)
-app.post('/api/dev/activate-sub', async (req, res) => {
-    const { userId } = req.body;
-    await pool.query('UPDATE users SET is_subscribed = TRUE WHERE id = ?', [userId]);
-    res.json({ success: true });
-});
-
-// Serve frontend in production
-if (process.env.NODE_ENV === 'production') {
+// --- SERVIDOR DE ARQUIVOS ESTÁTICOS (PRODUÇÃO) ---
+// Em produção, o Node.js serve o build do React
+const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER;
+if (isProduction) {
     app.use(express.static(path.join(__dirname, 'dist')));
+    
+    // Qualquer rota não-API retorna o index.html (SPA)
     app.get('*', (req, res) => {
+        // Ignora rotas API
+        if (req.path.startsWith('/api')) return res.sendStatus(404);
         res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
 }
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+// Inicia o Servidor e Banco
+connectDB().then(() => {
+    app.listen(PORT, () => {
+        console.log(`🚀 Server running on port ${PORT}`);
+        console.log(`🌍 Environment: ${isProduction ? 'Production' : 'Development'}`);
+    });
 });
