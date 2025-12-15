@@ -58,11 +58,11 @@ export const Header: React.FC<HeaderProps> = ({
 
   // --- DEBUG LOGGING ---
   useEffect(() => {
-      console.log("%c[HEADER DEBUG]", "color: yellow; font-weight: bold;");
+      console.log("%c[HEADER DEBUG]", "color: yellow; font-weight: bold; background: #333; padding: 4px;");
       console.log("Current Project Name:", currentProjectName);
-      console.log("Has Save Function:", !!saveProjectToDisk);
       console.log("Window Width:", window.innerWidth);
-      console.log("Is Mobile Mode:", window.innerWidth < 768);
+      console.log("Is Mobile Mode (<768px):", window.innerWidth < 768);
+      console.log("Save Function Available:", !!saveProjectToDisk);
   }, [currentProjectName, saveProjectToDisk]);
 
   return (
@@ -152,7 +152,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Right: Tools / Mixer Toggle */}
         <div className="flex items-center gap-3 justify-end w-auto md:w-1/4">
             
-            {/* Desktop Actions */}
+            {/* Desktop Actions (md:flex) */}
             <div className="hidden md:flex items-center gap-2">
                 <button 
                     onClick={() => canUndo && undoTracks()} 
@@ -190,14 +190,14 @@ export const Header: React.FC<HeaderProps> = ({
                 <button onClick={exportWav} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" title="Exportar WAV"><Download className="w-5 h-5" /></button>
             </div>
             
-            {/* MOBILE SAVE BUTTON (Explicitly visible on mobile) */}
+            {/* MOBILE SAVE BUTTON (md:hidden) - Explicitly added for visibility */}
             <button 
                 onClick={() => {
                     console.log("Botão Salvar Clicado (Mobile)");
                     saveProjectToDisk();
                 }}
                 className="md:hidden p-2 text-[var(--accent)] hover:bg-[var(--bg-element)] rounded border border-[var(--border-color)]"
-                title="Salvar"
+                title="Salvar na Nuvem"
             >
                 <CloudUpload className="w-5 h-5" />
             </button>

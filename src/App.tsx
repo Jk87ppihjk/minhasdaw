@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { Music, FolderOpen, ArrowLeft, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, ArrowLeftRight, Volume2, Trash2, LogOut, X } from 'lucide-react';
 import saveAs from 'file-saver';
