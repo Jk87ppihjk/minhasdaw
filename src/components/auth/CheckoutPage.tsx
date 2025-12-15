@@ -41,7 +41,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
 
             const settings = {
                 initialization: {
-                    amount: 49.90,
+                    amount: 49.90, // Preço fixo da assinatura
                     payer: {
                         email: user.email || "guest@monochrome.studio",
                     },
@@ -209,7 +209,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                         <div>
                             <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">Assinatura Pro</span>
                             <div className="flex items-baseline gap-1">
-                                <span className="text-2xl font-black text-white">R$ 149,90</span>
+                                <span className="text-2xl font-black text-white">R$ 49,90</span>
                                 <span className="text-zinc-500 text-xs">/mês</span>
                             </div>
                         </div>
