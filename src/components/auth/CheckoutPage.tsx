@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Zap, Cloud, Infinity, ShieldCheck, Loader2, CreditCard } from 'lucide-react';
+import { Check, Zap, Cloud, Infinity, ShieldCheck, Loader2 } from 'lucide-react';
 import { api } from '../../services/api';
 
 interface CheckoutPageProps {
@@ -20,11 +20,11 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                 return;
             }
 
-            // USANDO VARIÁVEL DE AMBIENTE (Seguro)
+            // USANDO VARIÁVEL DE AMBIENTE PARA SEGURANÇA
             const publicKey = process.env.MP_PUBLIC_KEY;
 
             if (!publicKey) {
-                console.error("ERRO: MP_PUBLIC_KEY não encontrada nas variáveis de ambiente.");
+                console.error("ERRO CRÍTICO: MP_PUBLIC_KEY não definida no .env");
                 setPaymentStatus('error');
                 return;
             }
@@ -46,7 +46,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                 customization: {
                     visual: {
                         style: {
-                            theme: 'dark', // Tema escuro para combinar com Monochrome
+                            theme: 'dark', // Tema escuro profissional
                         }
                     },
                     paymentMethods: {
@@ -69,7 +69,6 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                 payment_method_id: formData.payment_method_id,
                                 email: formData.payer.email,
                                 identification: formData.payer.identification,
-                                // Dados do cartão (se houver)
                                 token: formData.token,
                                 installments: formData.installments,
                                 issuer_id: formData.issuer_id,
@@ -79,8 +78,9 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
 
                             if (data.status === 'APPROVED') {
                                 setPaymentStatus('approved');
-                                setTimeout(() => onSuccess(), 2000); 
+                                setTimeout(() => onSuccess(), 2500); 
                             } else if (data.status === 'PENDING' && data.qrCodeBase64) {
+                                // Pix Gerado
                                 setPixData({
                                     qrCodeBase64: data.qrCodeBase64,
                                     qrCodeText: data.qrCodeText
@@ -88,7 +88,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                 setPaymentStatus('pending');
                             } else {
                                 setPaymentStatus('error');
-                                alert("Pagamento recusado: " + (data.message || 'Verifique os dados.'));
+                                alert("Pagamento não aprovado: " + (data.message || 'Verifique os dados.'));
                             }
 
                         } catch (error) {
@@ -98,13 +98,13 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                         }
                     },
                     onError: (error: any) => {
-                        console.error(error);
+                        console.error("Brick Error:", error);
                     },
                 },
             };
 
             const container = document.getElementById('paymentBrick_container');
-            if (container) container.innerHTML = '';
+            if (container) container.innerHTML = ''; // Limpa para evitar duplicação
 
             await bricksBuilder.create("payment", "paymentBrick_container", settings);
         };
@@ -113,6 +113,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
         return () => clearTimeout(timer);
     }, [user]);
 
+    // Função de teste para desenvolvedores (bypass)
     const handleDevActivation = async () => {
         if (confirm("MODO DEV: Ativar assinatura grátis para teste?")) {
             await api.post('/dev/activate-sub', { userId: user.id });
@@ -121,10 +122,10 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
     };
 
     return (
-        <div className="fixed inset-0 bg-[#050505] flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 bg-[#050505] flex items-center justify-center p-4 overflow-y-auto z-[200]">
             <div className="w-full max-w-5xl grid md:grid-cols-2 gap-0 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl bg-[#0a0a0a]">
                 
-                {/* Left: Value Prop */}
+                {/* Left: Value Proposition */}
                 <div className="p-8 md:p-12 flex flex-col justify-between bg-zinc-900/30 border-r border-zinc-800">
                     <div>
                         <h2 className="text-3xl font-black text-white mb-6 tracking-tighter">ASSINATURA PRO</h2>
@@ -147,7 +148,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                             </div>
                         </div>
                         
-                        <div className="bg-[#050505] p-6 rounded-xl border border-zinc-800 text-center">
+                        <div className="bg-[#050505] p-6 rounded-xl border border-zinc-800 text-center relative overflow-hidden">
+                            <div className="absolute top-0 right-0 bg-white text-black text-[9px] font-black px-2 py-1 rounded-bl uppercase">Melhor Valor</div>
                             <span className="text-zinc-500 text-xs uppercase tracking-widest font-bold">Total a pagar</span>
                             <div className="text-4xl font-black text-white mt-1">R$ 49,90</div>
                             <span className="text-zinc-600 text-[10px]">/mês</span>
@@ -165,16 +167,28 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                     </div>
                 </div>
 
-                {/* Right: Payment Brick */}
-                <div className="bg-[#0a0a0a] relative flex flex-col">
+                {/* Right: Payment Brick Container */}
+                <div className="bg-[#0a0a0a] relative flex flex-col h-[600px] md:h-auto">
                     
                     {/* Loading State Overlay */}
                     {(!brickReady || paymentStatus === 'processing') && (
-                        <div className="absolute inset-0 bg-[#0a0a0a]/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-4">
+                        <div className="absolute inset-0 bg-[#0a0a0a]/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-4">
                             <Loader2 className="w-8 h-8 text-white animate-spin" />
                             <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest">
-                                {paymentStatus === 'processing' ? 'Processando Pagamento...' : 'Carregando Checkout...'}
+                                {paymentStatus === 'processing' ? 'Processando Pagamento...' : 'Carregando Checkout Seguro...'}
                             </span>
+                        </div>
+                    )}
+
+                    {/* Error State */}
+                    {paymentStatus === 'error' && (
+                        <div className="absolute inset-0 bg-[#0a0a0a] z-50 flex flex-col items-center justify-center gap-4 text-center p-8">
+                            <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center border border-red-900/50">
+                                <ShieldCheck className="w-8 h-8 text-red-500" />
+                            </div>
+                            <h3 className="text-xl font-bold text-white">Erro no Pagamento</h3>
+                            <p className="text-zinc-500 text-sm">Verifique sua conexão ou tente novamente.</p>
+                            <button onClick={() => window.location.reload()} className="mt-4 px-6 py-2 bg-white text-black font-bold rounded hover:bg-zinc-200">Tentar Novamente</button>
                         </div>
                     )}
 
@@ -199,24 +213,30 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                 Aguardando PIX
                             </h3>
                             
-                            <div className="bg-white p-2 rounded-lg mb-6">
+                            <div className="bg-white p-2 rounded-lg mb-6 shadow-2xl">
                                 <img src={`data:image/png;base64,${pixData.qrCodeBase64}`} alt="QR Code Pix" className="w-48 h-48" />
                             </div>
 
                             <div className="w-full bg-zinc-900 border border-zinc-800 rounded p-3 mb-4">
                                 <p className="text-[10px] text-zinc-500 uppercase font-bold mb-1 text-left">Copia e Cola</p>
-                                <input 
-                                    type="text" 
-                                    readOnly 
-                                    value={pixData.qrCodeText} 
-                                    className="w-full bg-transparent text-zinc-300 text-xs font-mono outline-none truncate"
-                                    onClick={(e) => e.currentTarget.select()}
-                                />
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        readOnly 
+                                        value={pixData.qrCodeText} 
+                                        className="flex-1 bg-transparent text-zinc-300 text-xs font-mono outline-none truncate"
+                                        onClick={(e) => e.currentTarget.select()}
+                                    />
+                                    <button 
+                                        onClick={() => navigator.clipboard.writeText(pixData.qrCodeText)}
+                                        className="text-[10px] bg-zinc-800 px-2 rounded hover:text-white"
+                                    >Copiar</button>
+                                </div>
                             </div>
 
                             <button 
                                 onClick={onSuccess} 
-                                className="bg-white text-black px-6 py-3 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-zinc-200 transition-colors w-full"
+                                className="bg-white text-black px-6 py-3 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-zinc-200 transition-colors w-full shadow-lg shadow-white/10"
                             >
                                 Já realizei o pagamento
                             </button>

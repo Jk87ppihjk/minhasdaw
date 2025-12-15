@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
-  // Carrega variáveis de ambiente
+  // Carrega variáveis de ambiente do arquivo .env
   const env = loadEnv(mode, process.cwd(), '');
   
   return {
@@ -16,17 +16,17 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
+    // Define variáveis globais acessíveis no código do cliente (navegador)
     define: {
       'process.env.API_KEY': JSON.stringify(env.API_KEY),
-      'process.env.MP_PUBLIC_KEY': JSON.stringify(env.MP_PUBLIC_KEY), // EXPOSIÇÃO DA CHAVE PÚBLICA DO MP
+      'process.env.MP_PUBLIC_KEY': JSON.stringify(env.MP_PUBLIC_KEY), // Chave Pública do Mercado Pago
     },
     server: {
       host: '0.0.0.0',
-      port: 5174, // ALTERADO DE 5173 PARA 5174 PARA EVITAR CONFLITO COM O BACKEND
-      // Configuração de Proxy para redirecionar chamadas /api para o backend
+      port: 5174,
       proxy: {
         '/api': {
-          target: 'http://localhost:3000', // Backend local roda na 3000
+          target: 'http://localhost:3000',
           changeOrigin: true,
           secure: false,
         }

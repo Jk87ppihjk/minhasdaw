@@ -311,7 +311,7 @@ app.post('/api/assets/upload', authenticateToken, upload.single('file'), async (
     }
 });
 
-// 4. Pagamentos (PROCESSAMENTO VIA BRICK)
+// 4. Pagamentos (PROCESSAMENTO VIA BRICK - NOVO)
 app.post('/api/checkout/process_payment', authenticateToken, async (req, res) => {
     try {
         const { transaction_amount, description, payment_method_id, email, token, installments, issuer_id, identification } = req.body;
@@ -370,7 +370,7 @@ app.post('/api/checkout/process_payment', authenticateToken, async (req, res) =>
     }
 });
 
-// Rota LEGACY para preferência (Mantida, mas com URL segura para evitar crash)
+// Rota LEGACY para preferência (Mantida apenas para evitar 404, mas corrigida para evitar crash)
 app.post('/api/checkout/create-preference', authenticateToken, async (req, res) => {
     try {
         const frontUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -379,16 +379,18 @@ app.post('/api/checkout/create-preference', authenticateToken, async (req, res) 
             body: {
                 items: [{ title: 'Monochrome Pro Subscription', quantity: 1, unit_price: 49.90, currency_id: 'BRL' }],
                 payer: { email: req.user.email },
+                // BACK_URLS OBRIGATÓRIOS
                 back_urls: {
                     success: `${frontUrl}/?status=success`,
                     failure: `${frontUrl}/?status=failure`,
+                    pending: `${frontUrl}/?status=pending`,
                 },
                 auto_return: 'approved',
             }
         });
         res.json({ init_point: result.init_point });
     } catch (e) {
-        console.error(e);
+        console.error("Legacy Preference Error:", e);
         res.status(500).json({ message: 'Payment error' });
     }
 });
