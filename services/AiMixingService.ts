@@ -7,14 +7,30 @@ const mixingSchema = {
   type: Type.OBJECT,
   properties: {
     tracks: {
-        type: Type.OBJECT,
-        description: "Dictionary of track IDs to their new settings",
-        additionalProperties: {
+        type: Type.ARRAY,
+        description: "List of tracks with their new mix settings",
+        items: {
             type: Type.OBJECT,
             properties: {
+                trackId: { type: Type.STRING },
                 chain: { type: Type.ARRAY, items: { type: Type.STRING } },
-                settings: { type: Type.OBJECT, additionalProperties: true } // Simplified for brevity
-            }
+                settings: { 
+                    type: Type.OBJECT, 
+                    properties: {
+                        pocketComp: { type: Type.OBJECT, properties: { amount: { type: Type.NUMBER }, active: { type: Type.BOOLEAN } } },
+                        pocketEQ: { type: Type.OBJECT, properties: { low: { type: Type.NUMBER }, mid: { type: Type.NUMBER }, high: { type: Type.NUMBER }, active: { type: Type.BOOLEAN } } },
+                        pocketDrive: { type: Type.OBJECT, properties: { drive: { type: Type.NUMBER }, active: { type: Type.BOOLEAN } } },
+                        pocketSpace: { type: Type.OBJECT, properties: { mix: { type: Type.NUMBER }, active: { type: Type.BOOLEAN } } },
+                        pocketGate: { type: Type.OBJECT, properties: { threshold: { type: Type.NUMBER }, active: { type: Type.BOOLEAN } } },
+                        pocketWide: { type: Type.OBJECT, properties: { width: { type: Type.NUMBER }, active: { type: Type.BOOLEAN } } },
+                        pocketTune: { type: Type.OBJECT, properties: { scale: { type: Type.STRING }, speed: { type: Type.NUMBER }, amount: { type: Type.NUMBER }, active: { type: Type.BOOLEAN } } },
+                        reverb: { type: Type.OBJECT, properties: { mix: { type: Type.NUMBER }, time: { type: Type.NUMBER }, active: { type: Type.BOOLEAN } } },
+                        delay: { type: Type.OBJECT, properties: { mix: { type: Type.NUMBER }, time: { type: Type.NUMBER }, feedback: { type: Type.NUMBER }, active: { type: Type.BOOLEAN } } },
+                        filterDesert: { type: Type.OBJECT, properties: { x: { type: Type.NUMBER }, y: { type: Type.NUMBER }, active: { type: Type.BOOLEAN } } }
+                    }
+                }
+            },
+            required: ["trackId"]
         }
     },
     master: {
@@ -32,7 +48,8 @@ const mixingSchema = {
             }
         }
     }
-  }
+  },
+  required: ["tracks", "master"]
 };
 
 export class AiMixingService {
@@ -54,7 +71,7 @@ export class AiMixingService {
 
         Task:
         1. Analyze the volume levels and types of tracks.
-        2. Create a mixing chain for each track ID provided.
+        2. Create a mixing chain for each track provided.
         3. Create a MASTERING chain for the master output.
         
         Available Effects:
@@ -62,7 +79,7 @@ export class AiMixingService {
         - Master: proLimiter, multibandComp, pocketEQ, pocketWide.
 
         Rules:
-        - Returns JSON with 'tracks' object (keys = track IDs) and 'master' object.
+        - Return JSON with 'tracks' ARRAY (containing objects with trackId, chain, settings) and 'master' object.
         - For Master, typical chain: pocketEQ -> multibandComp -> proLimiter.
         - Use "proLimiter" with threshold around -3 to -1 for mastering loudness.
       `;

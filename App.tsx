@@ -895,10 +895,11 @@ export default function App() {
   // AI Mixing Handler (Updates Tracks + Master)
   const handleApplyAiMix = (result: any) => {
       // 1. Update Tracks
-      if (result.tracks) {
+      if (result.tracks && Array.isArray(result.tracks)) {
           setTracks(prev => prev.map(t => {
-              if (result.tracks[t.id]) {
-                  const newConfig = result.tracks[t.id];
+              // Find config for this track in the array
+              const newConfig = result.tracks.find((tc: any) => tc.trackId === t.id);
+              if (newConfig) {
                   const mergedEffects = { ...t.effects };
                   if (newConfig.settings) {
                       Object.keys(newConfig.settings).forEach(key => {
