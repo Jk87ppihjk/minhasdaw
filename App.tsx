@@ -25,6 +25,7 @@ import { TrackList } from './components/layout/TrackList';
 import { Timeline } from './components/layout/Timeline';
 import { MixerSidebar } from './components/layout/MixerSidebar';
 import { ProjectManager } from './components/ProjectManager';
+import { Dashboard } from './components/Dashboard';
 
 // --- Constants ---
 const BASE_PX_PER_SEC = 50;
@@ -63,7 +64,6 @@ const BASE_DEFAULTS: EffectSettings = {
 
 export default function App() {
   // State
-  const [welcomeScreen, setWelcomeScreen] = useState(true);
   const [theme, setTheme] = useState<string>('monochrome');
   const [tracks, setTracks, undoTracks, redoTracks, canUndo, canRedo] = useUndoRedo<Track[]>([]);
   
@@ -351,9 +351,8 @@ export default function App() {
           setTracks(loadedTracks);
           setAudioState(prev => ({ ...prev, ...projectData.audioState, isPlaying: false }));
           
-          // UPDATE CURRENT PROJECT NAME
+          // UPDATE CURRENT PROJECT NAME (This switches view from Dashboard to DAW)
           setCurrentProjectName(projectName);
-          setWelcomeScreen(false);
           
           setTimeout(() => setIsProcessing(false), 500);
 
@@ -362,6 +361,24 @@ export default function App() {
           setIsProcessing(false);
           alert("Erro ao abrir projeto: " + (err as Error).message);
       }
+  };
+
+  const handleCreateNewProject = async () => {
+      // Prompt user for name immediately
+      const name = prompt("Nome do Novo Projeto:", "Sem Titulo");
+      if (!name) return;
+      
+      // Reset state for new project
+      setTracks([]);
+      setAudioState({
+        isPlaying: false, currentTime: 0, totalDuration: 120, isRecording: false, bpm: 120, snapToGrid: true, metronomeOn: false, masterVolume: 0.8,
+        loop: { active: false, start: 0, end: 4 }
+      });
+      
+      await audioEngine.resumeContext();
+      
+      // Save empty project to establish folder
+      await handleSaveProject(name);
   };
 
   // --- SMART SAVE LOGIC ---
@@ -792,6 +809,18 @@ export default function App() {
 
   const selectedTrack = tracks.find(t => t.id === selectedTrackId);
 
+  // --- RENDER CONDITION: DASHBOARD VS DAW ---
+  if (!currentProjectName) {
+      return (
+          <Dashboard 
+              rootHandle={rootHandle}
+              onSelectRoot={handleSelectRootFolder}
+              onOpenProject={handleLoadProject}
+              onNewProject={handleCreateNewProject}
+          />
+      );
+  }
+
   return (
     <div className="flex flex-col h-screen w-full bg-[var(--bg-main)] text-[var(--text-main)] font-sans selection:bg-[var(--accent)] selection:text-black overflow-hidden relative transition-colors duration-300" style={THEMES[theme] as React.CSSProperties} onContextMenu={(e) => e.preventDefault()}>
       
@@ -817,6 +846,7 @@ export default function App() {
       {/* Context Menu */}
       {contextMenu.visible && (
           <div className="fixed z-[100] bg-[#111] border border-[#333] rounded-sm shadow-xl py-1 min-w-[200px] animate-in fade-in zoom-in-95 duration-100 flex flex-col" style={{ top: contextMenu.y, left: contextMenu.x }}>
+              {/* ... (Existing Context Menu) ... */}
               <div className="px-3 py-2 text-[10px] text-[#555] font-bold uppercase tracking-wider border-b border-[#333]">Clip Operations</div>
               <button onClick={() => processClipBuffer('removesilence')} className="w-full text-left px-4 py-2 text-xs font-bold text-[var(--accent)] hover:bg-[var(--bg-element)] flex items-center gap-2 group"><ScissorsLineDashed className="w-3 h-3" /> Remove Silence <span className="bg-[var(--accent)] text-black text-[9px] px-1 rounded ml-auto">PRO</span></button>
               <button onClick={() => processClipBuffer('neural')} className="w-full text-left px-4 py-2 text-xs font-bold text-[var(--accent)] hover:bg-[var(--bg-element)] flex items-center gap-2 group"><Sparkles className="w-3 h-3" /> Neural Enhance <span className="bg-[var(--accent)] text-black text-[9px] px-1 rounded ml-auto">PRO</span></button>
@@ -837,20 +867,6 @@ export default function App() {
 
       {showEffectSelector && effectSelectorTrackId && (
           <EffectSelector onSelect={(effectId) => addEffect(effectSelectorTrackId, effectId)} onClose={() => { setShowEffectSelector(false); setEffectSelectorTrackId(null); }} />
-      )}
-
-      {welcomeScreen && (
-          <div className="fixed inset-0 z-[100] bg-[var(--bg-main)] flex flex-col items-center justify-center animate-fade-in text-center p-4">
-             <div className="w-20 h-20 md:w-24 md:h-24 bg-[var(--text-main)] rounded-full flex items-center justify-center mb-8 shadow-2xl animate-pulse"><Music className="w-10 h-10 md:w-12 md:h-12 text-black" /></div>
-             <h1 className="text-4xl md:text-6xl font-black tracking-tighter mb-4 text-[var(--text-main)]">MONOCHROME</h1>
-             <p className="text-lg md:text-xl text-[var(--text-muted)] font-light tracking-widest mb-12 uppercase">Professional Web DAW</p>
-             <div className="flex flex-col md:flex-row gap-4 w-full max-w-md">
-                 <button onClick={() => setWelcomeScreen(false)} className="flex-1 px-8 py-4 bg-[var(--text-main)] text-[var(--bg-main)] font-bold tracking-widest hover:bg-[var(--text-muted)] hover:text-white transition-colors shadow-2xl uppercase">Enter Studio</button>
-                 <button onClick={() => toggleProjectManager('open')} className="flex-1 px-8 py-4 border border-[var(--text-main)] text-[var(--text-main)] font-bold tracking-widest hover:bg-[var(--text-main)] hover:text-black transition-colors shadow-2xl uppercase cursor-pointer flex items-center justify-center gap-2">
-                    <FolderOpen className="w-5 h-5" /> Open Project
-                 </button>
-             </div>
-          </div>
       )}
 
       {/* FULL SCREEN EFFECT OVERLAY */}

@@ -73,8 +73,20 @@ export const Header: React.FC<HeaderProps> = ({
         
         {/* Central Transport Capsule */}
         <div className="flex flex-col items-center justify-center flex-1">
-            <div className="flex items-center gap-2 md:gap-6">
+            <div className="flex items-center gap-4">
                 
+                {/* Master Volume - Moved here per request */}
+                <div className="hidden lg:flex flex-col items-center group mr-2">
+                    <span className="text-[8px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">Master</span>
+                    <input 
+                        type="range" 
+                        min="0" max="1" step="0.01" 
+                        value={audioState.masterVolume} 
+                        onChange={(e) => setAudioState(p => ({...p, masterVolume: parseFloat(e.target.value)}))}
+                        className="w-20 h-1 bg-[var(--bg-element)] rounded-lg appearance-none cursor-pointer accent-[var(--accent)]"
+                    />
+                </div>
+
                 {/* BPM */}
                 <div className="hidden md:flex items-center gap-2 bg-[var(--bg-element)] rounded-lg px-2 py-1 border border-[var(--border-color)]">
                     <div className="flex flex-col items-center">
@@ -116,18 +128,6 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Right: Tools / Mixer Toggle */}
         <div className="flex items-center gap-3 justify-end w-auto md:w-1/4">
             
-            {/* Master Volume - New Feature */}
-            <div className="hidden lg:flex flex-col items-end mr-4 group">
-                <span className="text-[8px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">Master Vol</span>
-                <input 
-                    type="range" 
-                    min="0" max="1" step="0.01" 
-                    value={audioState.masterVolume} 
-                    onChange={(e) => setAudioState(p => ({...p, masterVolume: parseFloat(e.target.value)}))}
-                    className="w-20 h-1 bg-[var(--bg-element)] rounded-lg appearance-none cursor-pointer accent-[var(--accent)]"
-                />
-            </div>
-
             <div className="hidden md:flex items-center gap-2">
                 <button 
                     onClick={() => canUndo && undoTracks()} 
