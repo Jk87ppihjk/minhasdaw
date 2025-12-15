@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { PenTool, Wand2, Save, Copy, Sparkles, PanelRightClose, Mic } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { PenTool, Wand2, Save, Copy, Sparkles, PanelRightClose, Mic, Type, Minus, Plus, Lock } from 'lucide-react';
 import { aiLyricsService } from '../services/AiLyricsService';
 import { Clip } from '../types';
 
@@ -8,76 +8,67 @@ interface CompositionAssistantProps {
   isOpen: boolean;
   onClose: () => void;
   isMobile: boolean;
-  selectedClip?: Clip | null; // Receive selected clip
+  selectedClip?: Clip | null;
 }
 
 export const CompositionAssistant: React.FC<CompositionAssistantProps> = ({ isOpen, onClose, isMobile, selectedClip }) => {
   const [lyrics, setLyrics] = useState('');
-  const [topic, setTopic] = useState('');
-  const [genre, setGenre] = useState('Trap');
-  const [mood, setMood] = useState('Melancholic');
-  const [isLoading, setIsLoading] = useState(false);
+  const [rhymeScheme, setRhymeScheme] = useState<string[]>([]);
+  const [fontSize, setFontSize] = useState(14);
   const [activeTab, setActiveTab] = useState<'write' | 'generate'>('write');
+  
+  // Referências para sincronizar o scroll
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const rhymeColRef = useRef<HTMLDivElement>(null);
 
-  const handleGenerate = async () => {
-    if (!topic) return;
-    setIsLoading(true);
-    try {
-      const result = await aiLyricsService.generateLyrics(topic, genre, mood);
-      setLyrics(prev => prev ? prev + "\n\n" + result : result);
-      setActiveTab('write');
-    } catch (error) {
-      alert("Erro ao gerar letra. Verifique sua API Key.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // --- Lógica de Rima ---
+  useEffect(() => {
+    const lines = lyrics.split('\n');
+    const endings: { [suffix: string]: string } = {};
+    let nextChar = 65; // Código ASCII para 'A'
+    
+    const schemes = lines.map(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return "";
 
-  const handleFix = async () => {
-    if (!lyrics.trim()) return;
-    setIsLoading(true);
-    try {
-      const result = await aiLyricsService.fixLyrics(lyrics);
-      setLyrics(result);
-    } catch (error) {
-        alert("Erro ao processar.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+        // Remove pontuação e pega a última palavra
+        const cleanLine = trimmed.replace(/[.,/#!$%^&*;:{}=\-_`~()?"']/g, "").toLowerCase();
+        const words = cleanLine.split(/\s+/);
+        const lastWord = words[words.length - 1];
+        
+        if (!lastWord || lastWord.length < 2) return "?";
 
-  const handleSuggest = async () => {
-    if (!lyrics.trim()) return;
-    setIsLoading(true);
-    try {
-      const result = await aiLyricsService.suggestNextLines(lyrics);
-      setLyrics(prev => prev + "\n" + result);
-    } catch (error) {
-        alert("Erro ao sugerir.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+        // Pega as últimas 3 letras (ou a palavra toda se for curta) como "som" da rima
+        // Isso é uma aproximação fonética simples
+        const suffix = lastWord.length > 3 ? lastWord.slice(-3) : lastWord;
 
-  const handleTranscribe = async () => {
-      if (!selectedClip || !selectedClip.blob) {
-          alert("Selecione um clipe de áudio gravado na timeline primeiro.");
-          return;
+        if (!endings[suffix]) {
+            endings[suffix] = String.fromCharCode(nextChar);
+            nextChar++;
+            if (nextChar > 90) nextChar = 65; // Volta para A se passar de Z (simplificado)
+        }
+        
+        return endings[suffix];
+    });
+
+    setRhymeScheme(schemes);
+  }, [lyrics]);
+
+  // --- Sincronia de Scroll ---
+  const handleScroll = () => {
+      if (textareaRef.current && rhymeColRef.current) {
+          rhymeColRef.current.scrollTop = textareaRef.current.scrollTop;
       }
-      setIsLoading(true);
-      try {
-          const text = await aiLyricsService.transcribeAudio(selectedClip.blob);
-          setLyrics(prev => prev ? prev + "\n\n[Transcribed]:\n" + text : text);
-      } catch (e) {
-          alert("Erro na transcrição.");
-      } finally {
-          setIsLoading(false);
-      }
+  };
+
+  // --- Bloqueio de Features ---
+  const handleFeatureBlocked = () => {
+      alert("⚠️ RECURSO EM DESENVOLVIMENTO\n\nNo momento, foque na composição manual. A transcrição e geração por IA estarão disponíveis na próxima atualização.");
   };
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(lyrics);
-    alert("Copiado!");
+    alert("Letra copiada!");
   };
 
   return (
@@ -106,104 +97,69 @@ export const CompositionAssistant: React.FC<CompositionAssistantProps> = ({ isOp
             Bloco de Notas
         </button>
         <button 
-            onClick={() => setActiveTab('generate')}
-            className={`flex-1 py-3 text-[10px] font-bold uppercase tracking-wider transition-colors ${activeTab === 'generate' ? 'bg-[#050505] text-white border-b-2 border-white' : 'text-zinc-600 hover:text-zinc-400'}`}
+            onClick={handleFeatureBlocked}
+            className="flex-1 py-3 text-[10px] font-bold uppercase tracking-wider transition-colors text-zinc-600 cursor-not-allowed flex items-center justify-center gap-2 opacity-50"
         >
-            Gerador AI
+            Gerador AI <Lock className="w-3 h-3" />
         </button>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden flex flex-col relative">
+      <div className="flex-1 overflow-hidden flex flex-col relative bg-[#050505]">
         
-        {isLoading && (
-             <div className="absolute inset-0 bg-black/80 z-20 flex flex-col items-center justify-center gap-3 backdrop-blur-sm animate-in fade-in">
-                 <div className="w-6 h-6 border-2 border-zinc-600 border-t-white rounded-full animate-spin"></div>
-                 <span className="text-xs font-mono animate-pulse text-zinc-400">PROCESSANDO...</span>
-             </div>
-        )}
-
-        {activeTab === 'write' ? (
-            <div className="flex-1 flex flex-col h-full">
-                <div className="p-2 border-b border-zinc-900 bg-[#080808]">
-                    <button 
-                        onClick={handleTranscribe}
-                        disabled={!selectedClip}
-                        className={`w-full flex items-center justify-center gap-2 py-2 rounded text-[10px] font-bold uppercase border transition-all ${selectedClip ? 'bg-zinc-900 text-white border-zinc-700 hover:bg-zinc-800' : 'bg-transparent text-zinc-600 border-zinc-800 cursor-not-allowed'}`}
-                        title="Selecione um clipe na timeline para transcrever"
-                    >
-                        <Mic className="w-3 h-3" /> Transcrever Audio Selecionado
-                    </button>
-                </div>
-                <textarea 
-                    className="flex-1 bg-[#050505] text-zinc-300 p-6 resize-none focus:outline-none font-mono text-sm leading-relaxed custom-scrollbar selection:bg-white selection:text-black placeholder-zinc-800"
-                    placeholder="Escreva sua letra aqui ou use a transcrição..."
-                    value={lyrics}
-                    onChange={(e) => setLyrics(e.target.value)}
-                    spellCheck={false}
-                />
-                
-                {/* AI Tools Bar */}
-                <div className="p-4 border-t border-zinc-800 bg-[#0a0a0a] grid grid-cols-2 gap-2">
-                    <button onClick={handleFix} disabled={!lyrics} className="flex items-center justify-center gap-2 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white py-2 rounded text-[10px] font-bold uppercase transition-colors disabled:opacity-50">
-                        <Wand2 className="w-3 h-3" /> Corrigir / Melhorar
-                    </button>
-                    <button onClick={handleSuggest} disabled={!lyrics} className="flex items-center justify-center gap-2 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white py-2 rounded text-[10px] font-bold uppercase transition-colors disabled:opacity-50">
-                        <Sparkles className="w-3 h-3" /> Sugerir Próxima
-                    </button>
-                    <button onClick={copyToClipboard} disabled={!lyrics} className="col-span-2 flex items-center justify-center gap-2 bg-zinc-900 border border-zinc-800 hover:bg-white hover:text-black text-zinc-400 py-2 rounded text-[10px] font-bold uppercase transition-colors disabled:opacity-50">
-                        <Copy className="w-3 h-3" /> Copiar Texto
-                    </button>
-                </div>
+        {/* Toolbar de Ferramentas de Texto */}
+        <div className="h-10 border-b border-zinc-800 flex items-center px-4 gap-4 bg-[#080808] shrink-0">
+            <div className="flex items-center gap-2 border-r border-zinc-800 pr-4">
+                <Type className="w-3 h-3 text-zinc-500" />
+                <button onClick={() => setFontSize(Math.max(10, fontSize - 1))} className="p-1 hover:text-white text-zinc-400"><Minus className="w-3 h-3" /></button>
+                <span className="text-[10px] font-mono text-zinc-300 w-4 text-center">{fontSize}</span>
+                <button onClick={() => setFontSize(Math.min(32, fontSize + 1))} className="p-1 hover:text-white text-zinc-400"><Plus className="w-3 h-3" /></button>
             </div>
-        ) : (
-            <div className="flex-1 p-6 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
-                <div className="flex flex-col gap-2">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Sobre o que é a música?</label>
-                    <input 
-                        type="text" 
-                        value={topic}
-                        onChange={(e) => setTopic(e.target.value)}
-                        placeholder="Ex: Um amor perdido em uma cidade cyberpunk..."
-                        className="bg-[#111] border border-zinc-800 rounded p-3 text-sm text-white focus:border-white focus:outline-none transition-colors"
-                    />
-                </div>
+            
+            <button onClick={handleFeatureBlocked} className="flex items-center gap-1 text-[10px] font-bold text-zinc-600 uppercase hover:text-zinc-500 cursor-not-allowed" title="Em desenvolvimento">
+                <Mic className="w-3 h-3" /> Transcrever
+            </button>
+        </div>
 
-                <div className="flex flex-col gap-2">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Gênero</label>
-                    <select 
-                        value={genre}
-                        onChange={(e) => setGenre(e.target.value)}
-                        className="bg-[#111] border border-zinc-800 rounded p-3 text-sm text-white focus:border-white focus:outline-none"
-                    >
-                        {['Trap', 'Rap', 'R&B', 'Pop', 'Rock', 'Lo-Fi', 'Reggaeton', 'Techno'].map(g => (
-                            <option key={g} value={g}>{g}</option>
-                        ))}
-                    </select>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Humor (Mood)</label>
-                    <select 
-                        value={mood}
-                        onChange={(e) => setMood(e.target.value)}
-                        className="bg-[#111] border border-zinc-800 rounded p-3 text-sm text-white focus:border-white focus:outline-none"
-                    >
-                        {['Melancholic', 'Aggressive', 'Happy', 'Romantic', 'Dark', 'Motivational', 'Chill'].map(m => (
-                            <option key={m} value={m}>{m}</option>
-                        ))}
-                    </select>
-                </div>
-
-                <button 
-                    onClick={handleGenerate}
-                    disabled={!topic || isLoading}
-                    className={`mt-auto w-full py-4 rounded font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${!topic ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed' : 'bg-white text-black hover:bg-zinc-200'}`}
-                >
-                    <Sparkles className="w-4 h-4" /> Gerar Letra Completa
-                </button>
+        <div className="flex-1 flex relative overflow-hidden">
+            {/* Coluna de Estrutura de Rimas */}
+            <div 
+                ref={rhymeColRef}
+                className="w-8 bg-[#0a0a0a] border-r border-zinc-800 flex flex-col items-center pt-6 pb-6 overflow-hidden select-none"
+                style={{ fontSize: `${fontSize}px`, lineHeight: '1.5' }}
+            >
+                {rhymeScheme.map((code, i) => (
+                    <div key={i} className="h-[1.5em] w-full flex items-center justify-center text-[10px] font-bold text-zinc-500 font-mono">
+                        {code && <span className={`px-1 rounded ${code === '?' ? 'opacity-20' : 'bg-zinc-800 text-zinc-300'}`}>{code}</span>}
+                    </div>
+                ))}
             </div>
-        )}
+
+            {/* Área de Texto */}
+            <textarea 
+                ref={textareaRef}
+                className="flex-1 bg-[#050505] text-zinc-300 p-6 resize-none focus:outline-none font-mono leading-[1.5] custom-scrollbar selection:bg-white selection:text-black placeholder-zinc-800 whitespace-pre"
+                placeholder="Comece a escrever sua obra prima..."
+                value={lyrics}
+                onChange={(e) => setLyrics(e.target.value)}
+                onScroll={handleScroll}
+                style={{ fontSize: `${fontSize}px` }}
+                spellCheck={false}
+            />
+        </div>
+        
+        {/* Footer Actions */}
+        <div className="p-4 border-t border-zinc-800 bg-[#0a0a0a] grid grid-cols-2 gap-2 shrink-0">
+            <button onClick={handleFeatureBlocked} className="flex items-center justify-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-600 py-2 rounded text-[10px] font-bold uppercase cursor-not-allowed">
+                <Wand2 className="w-3 h-3" /> Corrigir (Dev)
+            </button>
+            <button onClick={handleFeatureBlocked} className="flex items-center justify-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-600 py-2 rounded text-[10px] font-bold uppercase cursor-not-allowed">
+                <Sparkles className="w-3 h-3" /> Sugerir (Dev)
+            </button>
+            <button onClick={copyToClipboard} disabled={!lyrics} className="col-span-2 flex items-center justify-center gap-2 bg-zinc-900 border border-zinc-800 hover:bg-white hover:text-black text-zinc-400 py-2 rounded text-[10px] font-bold uppercase transition-colors disabled:opacity-50">
+                <Copy className="w-3 h-3" /> Copiar Texto
+            </button>
+        </div>
       </div>
     </div>
   );
