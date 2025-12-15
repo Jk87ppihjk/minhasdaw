@@ -20,7 +20,7 @@ class AudioEngineService {
   private timerID: number | null = null;
   private metronomeVolume: number = 0.5;
 
-  // Recording State
+  // Recording & Monitoring State
   private mediaStream: MediaStream | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
@@ -28,10 +28,13 @@ class AudioEngineService {
   public recordingAnalyser: AnalyserNode | null = null;
   private recordingDataArray: Uint8Array | null = null;
   
-  // Recording Graph Nodes (for cleanup)
+  // Audio Graph Nodes
   private _recSource: MediaStreamAudioSourceNode | null = null;
   private _recGain: GainNode | null = null;
   private _recDest: MediaStreamAudioDestinationNode | null = null;
+  
+  // Monitoring State
+  private currentMonitorTrackId: string | null = null;
 
   constructor() {
     this.ctxManager = new AudioContextManager();
@@ -45,7 +48,7 @@ class AudioEngineService {
   resumeContext = () => this.ctxManager.resumeContext();
   setMasterVolume = (val: number) => this.ctxManager.setMasterVolume(val);
   
-  // Decodificação (Essencial para o áudio gravado tocar)
+  // Decodificação
   decodeAudioData = async (buffer: ArrayBuffer) => {
       return await this.ctxManager.decodeAudioData(buffer);
   }
@@ -132,20 +135,14 @@ class AudioEngineService {
   // --- Playback Logic ---
 
   playClip = (clip: Clip, track: Track, when: number = 0, offset: number = 0) => {
-    if (!clip.buffer) {
-        // Silent return if buffer isn't ready (prevents error logs during recording race conditions)
-        return;
-    }
+    if (!clip.buffer) return;
     
-    // Garante que o contexto esteja rodando
     this.resumeContext();
-
     this.stopClip(clip.id);
     const chain = this.effectsManager.getOrCreateTrackChain(track);
     const source = this.context.createBufferSource();
     source.buffer = clip.buffer;
     
-    // Connect to effects chain
     try {
         source.connect(chain.input);
     } catch(err) {
@@ -158,13 +155,11 @@ class AudioEngineService {
     const bufferDuration = clip.buffer.duration;
     const bufferOffset = Math.max(0, (clip.audioOffset || 0) + offset);
     
-    // Clamp duration to prevent overrunning buffer bounds which can silence playback
     let playDuration = clip.duration - offset;
     if (bufferOffset + playDuration > bufferDuration) {
         playDuration = bufferDuration - bufferOffset;
     }
     
-    // Avoid playing excessively short or negative durations
     if (playDuration < 0.001 || bufferOffset >= bufferDuration) return;
 
     this.sources.set(clip.id, source);
@@ -195,35 +190,78 @@ class AudioEngineService {
     this.sources.clear();
   }
 
+  // --- Microphone & Monitoring Logic ---
+
+  private initMicrophone = async () => {
+      if (this._recSource) return; // Já inicializado
+
+      await this.resumeContext();
+      
+      try {
+          this.mediaStream = await navigator.mediaDevices.getUserMedia({ 
+              audio: { 
+                  echoCancellation: false, 
+                  noiseSuppression: false, 
+                  autoGainControl: false,
+                  latency: 0
+              } as any
+          });
+
+          this._recSource = this.context.createMediaStreamSource(this.mediaStream);
+          this._recGain = this.context.createGain();
+          this._recGain.gain.value = 1.0;
+          this._recSource.connect(this._recGain);
+
+          // Configura Analyser para visuais globais de input
+          this.recordingAnalyser = this.context.createAnalyser();
+          this.recordingAnalyser.fftSize = 256; 
+          this.recordingDataArray = new Uint8Array(this.recordingAnalyser.frequencyBinCount);
+          this._recGain.connect(this.recordingAnalyser);
+
+      } catch (err) {
+          console.error('AudioEngine: Failed to init microphone', err);
+          throw err;
+      }
+  }
+
+  // Liga/Desliga o monitoramento na faixa especificada
+  public toggleMonitor = async (trackId: string, enable: boolean) => {
+      // Se estiver mudando de faixa ou desligando, desconecta o anterior
+      if (this.currentMonitorTrackId && (this.currentMonitorTrackId !== trackId || !enable)) {
+          const oldChain = this.effectsManager.getTrackChain(this.currentMonitorTrackId);
+          if (oldChain && this._recGain) {
+              try { this._recGain.disconnect(oldChain.input); } catch(e) {}
+          }
+          this.currentMonitorTrackId = null;
+      }
+
+      if (enable) {
+          await this.initMicrophone();
+          const chain = this.effectsManager.getTrackChain(trackId);
+          if (chain && this._recGain) {
+              // Roteia: Microfone -> Ganho Input -> Input da Faixa (Efeitos)
+              this._recGain.connect(chain.input);
+              this.currentMonitorTrackId = trackId;
+          }
+      }
+  }
+
   // --- Recording Logic ---
 
   startRecording = async () => {
     this.audioChunks = [];
     try {
-        await this.resumeContext();
+        await this.initMicrophone();
 
-        this.mediaStream = await navigator.mediaDevices.getUserMedia({ 
-            audio: { 
-                echoCancellation: false, 
-                noiseSuppression: false, 
-                autoGainControl: false,
-                latency: 0
-            } as any
-        });
+        // Destino exclusivo para o MediaRecorder (não afeta o monitoramento)
+        if (!this._recDest) {
+            this._recDest = this.context.createMediaStreamDestination();
+        }
         
-        this._recSource = this.context.createMediaStreamSource(this.mediaStream);
-        this._recDest = this.context.createMediaStreamDestination();
-        this._recGain = this.context.createGain();
-        this._recGain.gain.value = 1.0;
-
-        this._recSource.connect(this._recGain);
-        this._recGain.connect(this._recDest);
-
-        // Visuals
-        this.recordingAnalyser = this.context.createAnalyser();
-        this.recordingAnalyser.fftSize = 256; 
-        this.recordingDataArray = new Uint8Array(this.recordingAnalyser.frequencyBinCount);
-        this._recGain.connect(this.recordingAnalyser);
+        // Conecta o ganho do mic ao destino de gravação
+        if (this._recGain) {
+            this._recGain.connect(this._recDest);
+        }
 
         if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
             this.recordingMimeType = 'audio/webm;codecs=opus';
@@ -262,22 +300,19 @@ class AudioEngineService {
 
   stopRecording = (): Promise<Blob> => {
       return new Promise((resolve) => {
-          if (this.recordingAnalyser) { this.recordingAnalyser.disconnect(); this.recordingAnalyser = null; }
-          if (this._recSource) { this._recSource.disconnect(); this._recSource = null; }
-          if (this._recGain) { this._recGain.disconnect(); this._recGain = null; }
-          if (this._recDest) { this._recDest = null; }
+          // Desconecta do destino de gravação, mas mantém a fonte e o ganho vivos para monitoramento
+          if (this._recGain && this._recDest) {
+              try { this._recGain.disconnect(this._recDest); } catch(e) {}
+          }
 
           if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
               resolve(new Blob([], { type: this.recordingMimeType || 'audio/webm' }));
               return;
           }
+          
           this.mediaRecorder.onstop = () => {
               const blob = new Blob(this.audioChunks, { type: this.recordingMimeType || 'audio/webm' });
               this.audioChunks = [];
-              if (this.mediaStream) {
-                  this.mediaStream.getTracks().forEach(track => track.stop());
-                  this.mediaStream = null;
-              }
               this.mediaRecorder = null;
               resolve(blob);
           };

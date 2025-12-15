@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Pause, Square, Music, Settings2, Download, Save, Palette, Menu, PanelLeftClose, PanelRightClose, Undo2, Redo2, Maximize, Minimize, MoreVertical, FolderOpen } from 'lucide-react';
+import { Play, Pause, Square, Music, Settings2, Download, Save, Palette, Menu, PanelLeftClose, PanelRightClose, Undo2, Redo2, Maximize, Minimize, MoreVertical, FolderOpen, Ear } from 'lucide-react';
 import { AudioEngineState } from '../../types';
 
 interface HeaderProps {
@@ -9,6 +9,10 @@ interface HeaderProps {
   handleStop: () => void;
   toggleRecord: () => void;
   formatTime: (seconds: number) => string;
+  
+  // Monitoring
+  isMonitoring: boolean;
+  toggleMonitoring: () => void;
   
   // Actions
   undoTracks: () => void;
@@ -30,6 +34,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   audioState, setAudioState, togglePlay, handleStop, toggleRecord, formatTime,
+  isMonitoring, toggleMonitoring,
   undoTracks, redoTracks, canUndo, canRedo, saveProject, exportWav,
   toggleTheme, toggleFullScreen, isFullScreen,
   isTrackListOpen, setIsTrackListOpen, isSidebarOpen, setIsSidebarOpen
@@ -75,6 +80,14 @@ export const Header: React.FC<HeaderProps> = ({
                     </button>
                     <button onClick={toggleRecord} className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all ${audioState.isRecording ? 'bg-red-600 border-red-500 text-white animate-pulse' : 'bg-[var(--bg-element)] border-[var(--border-color)] text-red-500 hover:text-red-400'}`}>
                         <div className={`w-3 h-3 rounded-full ${audioState.isRecording ? 'bg-white' : 'bg-current'}`}></div>
+                    </button>
+                    {/* Live Monitoring Button */}
+                    <button 
+                        onClick={toggleMonitoring} 
+                        className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all ${isMonitoring ? 'bg-green-500/20 text-green-500 border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'bg-[var(--bg-element)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
+                        title="Live FX Monitor"
+                    >
+                        <Ear className="w-5 h-5" />
                     </button>
                 </div>
                 

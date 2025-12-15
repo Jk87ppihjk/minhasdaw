@@ -85,6 +85,9 @@ export default function App() {
   
   const [activeTool, setActiveTool] = useState<'cursor' | 'split'>('cursor');
   
+  // Monitoring State
+  const [isMonitoring, setIsMonitoring] = useState(false);
+
   // Processing State
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
@@ -175,9 +178,9 @@ export default function App() {
         let effectiveVolume = track.volume;
         if (track.muted || (anySolo && !track.solo)) effectiveVolume = 0;
         audioEngine.setTrackVolume(track.id, effectiveVolume);
-        if(audioState.isPlaying) audioEngine.updateTrackSettings(track);
+        if(audioState.isPlaying || isMonitoring) audioEngine.updateTrackSettings(track);
     });
-  }, [tracks, audioState.isPlaying]);
+  }, [tracks, audioState.isPlaying, isMonitoring]);
 
   // --- Project Management ---
   const saveProject = async () => {
@@ -298,8 +301,6 @@ export default function App() {
             };
             
             // CRITICAL FIX: Update tracksRef IMMEDIATELY before setting state.
-            // This ensures that when playback effect restarts (due to isRecording change),
-            // playActiveSegments sees the updated buffer instantly.
             const updatedTracks = tracksRef.current.map(t => 
                 t.id === recordingTrackIdRef.current 
                 ? { ...t, clips: t.clips.map(c => c.id === recordingClipIdRef.current ? newClip : c) } 
@@ -316,23 +317,63 @@ export default function App() {
 
     } else {
       try {
-        await audioEngine.startRecording(); 
-        recordingStartTimeRef.current = audioState.currentTime; 
-        recordingWaveformRef.current = [];
+        // Prepare track for recording
         let recTrackId = selectedTrackId;
         if (!tracks.find(t => t.id === selectedTrackId)?.type.includes('VOCAL')) {
             const newTrack: Track = { id: crypto.randomUUID(), name: `Vocal Rec`, type: TrackType.VOCAL, volume: 1.0, pan: 0, muted: false, solo: false, clips: [], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] };
-            setTracks(prev => [...prev, newTrack]); recTrackId = newTrack.id; setSelectedTrackId(newTrack.id);
+            setTracks(prev => [...prev, newTrack]); 
+            recTrackId = newTrack.id; 
+            setSelectedTrackId(newTrack.id);
+            // Small delay to ensure track is in state before Engine tries to access it
+            await new Promise(r => setTimeout(r, 100));
         }
+        
         recordingTrackIdRef.current = recTrackId;
         const tempClipId = crypto.randomUUID(); 
         recordingClipIdRef.current = tempClipId;
-        setTimeout(() => setTracks(prev => prev.map(t => t.id === recTrackId ? { ...t, clips: [...t.clips, { id: tempClipId, name: "Recording...", duration: 0, audioOffset: 0, startTime: recordingStartTimeRef.current, liveData: [] }] } : t)), 0);
+        recordingStartTimeRef.current = audioState.currentTime; 
+        recordingWaveformRef.current = [];
+
+        // Update UI with placeholder clip
+        setTracks(prev => prev.map(t => t.id === recTrackId ? { ...t, clips: [...t.clips, { id: tempClipId, name: "Recording...", duration: 0, audioOffset: 0, startTime: recordingStartTimeRef.current, liveData: [] }] } : t));
+
+        // Start Recording in Engine
+        await audioEngine.startRecording(); 
         setAudioState(prev => ({ ...prev, isRecording: true })); 
+        
         if (!audioState.isPlaying) togglePlay();
       } catch (err) { alert("Microphone error or permission denied."); }
     }
   };
+
+  // --- MONITORING LOGIC ---
+  const toggleMonitoring = async () => {
+      if (!selectedTrackId) {
+          alert("Select a track to monitor.");
+          return;
+      }
+      
+      const newStatus = !isMonitoring;
+      setIsMonitoring(newStatus);
+      
+      try {
+          await audioEngine.toggleMonitor(selectedTrackId, newStatus);
+      } catch (e) {
+          console.error("Failed to toggle monitoring", e);
+          setIsMonitoring(false);
+      }
+  };
+
+  // Auto-update monitoring if selected track changes while monitoring is active
+  useEffect(() => {
+      if (isMonitoring && selectedTrackId) {
+          audioEngine.toggleMonitor(selectedTrackId, true).catch(() => setIsMonitoring(false));
+      } else if (!selectedTrackId && isMonitoring) {
+          setIsMonitoring(false);
+          audioEngine.toggleMonitor("", false);
+      }
+  }, [selectedTrackId]);
+
 
   const toggleLoop = () => setAudioState(prev => ({ ...prev, loop: { ...prev.loop, active: !prev.loop.active } }));
 
@@ -365,29 +406,44 @@ export default function App() {
 
   // --- Play Loop Animation ---
   useEffect(() => {
-    if (audioState.isPlaying) {
+    if (audioState.isPlaying || isMonitoring || audioState.isRecording) {
         const loop = () => {
             const now = audioEngine.currentTime;
             let visualTime = now - playbackAnchorTimeRef.current;
+            
+            // Handle Recording Visuals
             if (audioState.isRecording && recordingClipIdRef.current && recordingTrackIdRef.current) {
-                recordingWaveformRef.current.push(audioEngine.getRecordingPeak());
+                const peak = audioEngine.getRecordingPeak();
+                recordingWaveformRef.current.push(peak);
                 setTracks(prev => prev.map(t => t.id === recordingTrackIdRef.current ? { ...t, clips: t.clips.map(c => c.id === recordingClipIdRef.current ? { ...c, duration: Math.max(0, visualTime - c.startTime), liveData: [...recordingWaveformRef.current] } : c) } : t));
+            } else if (isMonitoring && !audioState.isPlaying) {
+                // If only monitoring (not playing/recording), we still need to pump the loop for visuals (e.g. EQ analyzer)
+                // but we don't update currentTime
             }
-            if (audioState.loop.active && visualTime >= audioState.loop.end) {
-                audioEngine.stopAll(); visualTime = audioState.loop.start; playbackAnchorTimeRef.current = now - audioState.loop.start;
-                audioEngine.startTransport(visualTime); playActiveSegments(visualTime);
-            } else if (visualTime >= audioState.totalDuration) {
-               audioEngine.stopAll(); setAudioState(prev => ({ ...prev, currentTime: 0, isPlaying: false })); if (audioState.isRecording) toggleRecord(); cancelAnimationFrame(rafRef.current); return;
+
+            if (audioState.isPlaying) {
+                if (audioState.loop.active && visualTime >= audioState.loop.end) {
+                    audioEngine.stopAll(); visualTime = audioState.loop.start; playbackAnchorTimeRef.current = now - audioState.loop.start;
+                    audioEngine.startTransport(visualTime); playActiveSegments(visualTime);
+                } else if (visualTime >= audioState.totalDuration) {
+                   audioEngine.stopAll(); setAudioState(prev => ({ ...prev, currentTime: 0, isPlaying: false })); if (audioState.isRecording) toggleRecord(); cancelAnimationFrame(rafRef.current); return;
+                }
+                if (!Number.isFinite(visualTime)) visualTime = 0;
+                setAudioState(prev => ({ ...prev, currentTime: Math.max(0, visualTime) })); 
             }
-            if (!Number.isFinite(visualTime)) visualTime = 0;
-            setAudioState(prev => ({ ...prev, currentTime: Math.max(0, visualTime) })); rafRef.current = requestAnimationFrame(loop);
+            
+            rafRef.current = requestAnimationFrame(loop);
         };
-        // Initial playback trigger
-        playActiveSegments(audioState.currentTime); 
+        // Initial playback trigger if playing
+        if(audioState.isPlaying) playActiveSegments(audioState.currentTime);
+        
         rafRef.current = requestAnimationFrame(loop);
-    } else { cancelAnimationFrame(rafRef.current); audioEngine.stopAll(); }
+    } else { 
+        cancelAnimationFrame(rafRef.current); 
+        audioEngine.stopAll(); 
+    }
     return () => cancelAnimationFrame(rafRef.current);
-  }, [audioState.isPlaying, audioState.loop, audioState.isRecording]); 
+  }, [audioState.isPlaying, audioState.loop, audioState.isRecording, isMonitoring]); 
 
   // Sync BPM
   useEffect(() => { audioEngine.setBpm(audioState.bpm); audioEngine.setMetronomeStatus(audioState.metronomeOn); }, [audioState.bpm, audioState.metronomeOn]);
@@ -621,6 +677,7 @@ export default function App() {
       {/* 1. Header (Transport & Tools) */}
       <Header 
         audioState={audioState} setAudioState={setAudioState} togglePlay={togglePlay} handleStop={handleStop} toggleRecord={toggleRecord} formatTime={formatTime}
+        isMonitoring={isMonitoring} toggleMonitoring={toggleMonitoring}
         undoTracks={undoTracks} redoTracks={redoTracks} canUndo={canUndo} canRedo={canRedo} saveProject={saveProject} exportWav={exportWav} toggleTheme={toggleTheme} toggleFullScreen={toggleFullScreen} isFullScreen={isFullScreen}
         isTrackListOpen={isTrackListOpen} setIsTrackListOpen={setIsTrackListOpen} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen}
       />
