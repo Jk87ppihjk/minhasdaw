@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useState } from 'react';
 import { FilterBand } from '../../types';
 import { audioEngine } from '../../services/AudioEngine';
@@ -8,6 +9,7 @@ export interface EQSettings {
   bands: FilterBand[];
   reverb: number; // 0 a 100
   preamp: number; // -12 a +12 dB
+  active: boolean; // Add active property to match LegacyEffectSettings
   auditionBandIndex?: number; // Índice da banda sendo ouvida isoladamente (Solo)
 }
 
