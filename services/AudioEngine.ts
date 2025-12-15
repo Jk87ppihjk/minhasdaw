@@ -1,4 +1,3 @@
-
 import { Track, Clip, EffectSettings } from '../types';
 import { AudioContextManager } from './audio/AudioContextManager';
 import { AudioProcessor } from './audio/AudioProcessor';
@@ -169,7 +168,11 @@ class AudioEngineService {
 
   // --- Recording Logic ---
 
-  startRecording = async () => {
+  /**
+   * Inicia a gravação.
+   * @param enableMonitoring Se true, o áudio do microfone será reproduzido nas caixas de som/fone (cuidado com feedback).
+   */
+  startRecording = async (enableMonitoring: boolean = true) => {
     this.audioChunks = [];
     try {
         await this.resumeContext();
@@ -183,22 +186,31 @@ class AudioEngineService {
             } as any
         });
         
-        // Setup Graph: Source -> Gain -> Destination
-        // Gravar do Destination garante que o áudio esteja no formato correto do AudioContext
+        // --- Setup Graph ---
         this._recSource = this.context.createMediaStreamSource(this.mediaStream);
         this._recDest = this.context.createMediaStreamDestination();
         this._recGain = this.context.createGain();
         this._recGain.gain.value = 1.0;
 
+        // Conexão: Source -> Gain
         this._recSource.connect(this._recGain);
+        
+        // Conexão: Gain -> Destination (para o MediaRecorder gravar)
         this._recGain.connect(this._recDest);
 
-        // Visuals
+        // --- CORREÇÃO: Monitoramento (Ouvir enquanto grava) ---
+        // Conecta o ganho também ao masterGain para sair nas caixas de som
+        if (enableMonitoring) {
+            this._recGain.connect(this.ctxManager.masterGain);
+        }
+
+        // --- Visuals ---
         this.recordingAnalyser = this.context.createAnalyser();
         this.recordingAnalyser.fftSize = 256; 
         this.recordingDataArray = new Uint8Array(this.recordingAnalyser.frequencyBinCount);
         this._recGain.connect(this.recordingAnalyser);
 
+        // --- Codec Selection ---
         if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
             this.recordingMimeType = 'audio/webm;codecs=opus';
         } else if (MediaRecorder.isTypeSupported('audio/webm')) {
@@ -234,15 +246,31 @@ class AudioEngineService {
   stopRecording = (): Promise<Blob> => {
       return new Promise((resolve) => {
           // Cleanup Nodes
-          if (this.recordingAnalyser) { this.recordingAnalyser.disconnect(); this.recordingAnalyser = null; }
-          if (this._recSource) { this._recSource.disconnect(); this._recSource = null; }
-          if (this._recGain) { this._recGain.disconnect(); this._recGain = null; }
-          if (this._recDest) { this._recDest = null; }
+          if (this.recordingAnalyser) { 
+              this.recordingAnalyser.disconnect(); 
+              this.recordingAnalyser = null; 
+          }
+          
+          if (this._recSource) { 
+              this._recSource.disconnect(); 
+              this._recSource = null; 
+          }
+          
+          if (this._recGain) { 
+              // Ao desconectar sem argumentos, ele desconecta do Destino E do MasterGain (parando o monitoramento)
+              this._recGain.disconnect(); 
+              this._recGain = null; 
+          }
+          
+          if (this._recDest) { 
+              this._recDest = null; 
+          }
 
           if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
               resolve(new Blob([], { type: this.recordingMimeType || 'audio/webm' }));
               return;
           }
+          
           this.mediaRecorder.onstop = () => {
               const blob = new Blob(this.audioChunks, { type: this.recordingMimeType || 'audio/webm' });
               this.audioChunks = [];
@@ -258,4 +286,4 @@ class AudioEngineService {
   }
 }
 
-export const audioEngine = new AudioEngineService();
+export const audioEngine = new AudioEngineService(); 
