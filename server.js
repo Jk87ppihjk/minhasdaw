@@ -373,14 +373,19 @@ app.post('/api/checkout/process_payment', authenticateToken, async (req, res) =>
 // Rota LEGACY para preferência (caso ainda seja usada)
 app.post('/api/checkout/create-preference', authenticateToken, async (req, res) => {
     try {
+        // Safe Fallback for URL
+        const frontUrl = process.env.FRONTEND_URL && process.env.FRONTEND_URL.startsWith('http') 
+                       ? process.env.FRONTEND_URL 
+                       : 'http://localhost:5173';
+
         const preference = new Preference(mpClient);
         const result = await preference.create({
             body: {
                 items: [{ title: 'Monochrome Pro Subscription', quantity: 1, unit_price: 49.90, currency_id: 'BRL' }],
                 payer: { email: req.user.email },
                 back_urls: {
-                    success: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/?status=success`,
-                    failure: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/?status=failure`,
+                    success: `${frontUrl}/?status=success`,
+                    failure: `${frontUrl}/?status=failure`,
                 },
                 auto_return: 'approved',
             }

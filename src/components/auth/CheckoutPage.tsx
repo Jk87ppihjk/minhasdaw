@@ -20,10 +20,11 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                 return;
             }
 
+            // USANDO VARIÁVEL DE AMBIENTE (Mais Seguro)
             const publicKey = process.env.MP_PUBLIC_KEY;
 
             if (!publicKey) {
-                console.error("MP_PUBLIC_KEY não configurada nas variáveis de ambiente.");
+                console.error("ERRO: MP_PUBLIC_KEY não encontrada nas variáveis de ambiente.");
                 setPaymentStatus('error');
                 return;
             }
@@ -62,14 +63,12 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                         setPaymentStatus('processing');
                         
                         try {
-                            // Se for cartão, o token vem no formData. Se for Pix, não tem token.
                             const payload = {
                                 transaction_amount: formData.transaction_amount,
                                 description: "Monochrome Studio Pro",
                                 payment_method_id: formData.payment_method_id,
                                 email: formData.payer.email,
                                 identification: formData.payer.identification,
-                                // Dados opcionais (cartão)
                                 token: formData.token,
                                 installments: formData.installments,
                                 issuer_id: formData.issuer_id,
@@ -79,9 +78,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
 
                             if (data.status === 'APPROVED') {
                                 setPaymentStatus('approved');
-                                setTimeout(() => onSuccess(), 2000); // Aguarda animação e libera
+                                setTimeout(() => onSuccess(), 2000); 
                             } else if (data.status === 'PENDING' && data.qrCodeBase64) {
-                                // Caso Pix
                                 setPixData({
                                     qrCodeBase64: data.qrCodeBase64,
                                     qrCodeText: data.qrCodeText
@@ -104,19 +102,16 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                 },
             };
 
-            // Limpa container antes de criar (para evitar duplicatas em re-renders)
             const container = document.getElementById('paymentBrick_container');
             if (container) container.innerHTML = '';
 
             await bricksBuilder.create("payment", "paymentBrick_container", settings);
         };
 
-        // Pequeno delay para garantir que o script carregou ou o container montou
         const timer = setTimeout(loadBrick, 500);
         return () => clearTimeout(timer);
     }, [user]);
 
-    // Função "Dev" para testar o fluxo sem pagar de verdade
     const handleDevActivation = async () => {
         if (confirm("MODO DEV: Ativar assinatura grátis para teste?")) {
             await api.post('/dev/activate-sub', { userId: user.id });
