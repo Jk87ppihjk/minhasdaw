@@ -400,7 +400,8 @@ export class EffectsChainManager {
           }
 
           const smoothing = Math.max(0.002, currentSettings.speed * 0.08); 
-          const grainLen = 1024; 
+          // INCREASED GRAIN SIZE TO 2048 FOR PRO PC QUALITY
+          const grainLen = 2048; 
           const bufLen = delayBuffer.length;
 
           for (let i = 0; i < input.length; i++) {

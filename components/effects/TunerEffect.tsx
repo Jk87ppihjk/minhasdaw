@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useState } from 'react';
 import { EffectSettings } from '../../types'; 
 import { audioEngine } from '../../services/AudioEngine';
@@ -171,8 +172,11 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
             <div className={`w-2 h-2 rounded-full ${displayInfo.hz !== 'Silence' ? 'bg-white animate-pulse' : 'bg-[#333]'}`}></div>
             <h1 className="text-white text-sm tracking-widest font-black uppercase">Auto-Pitch <span className="text-zinc-500">PRO</span></h1>
          </div>
-         <div className={`text-[10px] px-3 py-1 rounded-full border font-bold tracking-wider ${displayInfo.hz !== 'Silence' ? 'bg-white/10 text-white border-white/30' : 'bg-[#1a1a1a] text-[#555] border-[#333]'}`}>
-            {displayInfo.hz !== 'Silence' ? 'SIGNAL DETECTED' : 'NO SIGNAL'}
+         <div className="flex items-center gap-4">
+             <span className="text-[9px] font-bold text-green-500 tracking-wider animate-pulse uppercase border border-green-900/50 bg-green-900/10 px-2 py-0.5 rounded">HQ ENGINE ACTIVE</span>
+             <div className={`text-[10px] px-3 py-1 rounded-full border font-bold tracking-wider ${displayInfo.hz !== 'Silence' ? 'bg-white/10 text-white border-white/30' : 'bg-[#1a1a1a] text-[#555] border-[#333]'}`}>
+                {displayInfo.hz !== 'Silence' ? 'SIGNAL DETECTED' : 'NO SIGNAL'}
+             </div>
          </div>
       </div>
 
