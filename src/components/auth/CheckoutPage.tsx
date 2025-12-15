@@ -20,7 +20,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                 return;
             }
 
-            // USANDO VARIÁVEL DE AMBIENTE (Mais Seguro)
+            // USANDO VARIÁVEL DE AMBIENTE (Seguro)
             const publicKey = process.env.MP_PUBLIC_KEY;
 
             if (!publicKey) {
@@ -69,6 +69,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                 payment_method_id: formData.payment_method_id,
                                 email: formData.payer.email,
                                 identification: formData.payer.identification,
+                                // Dados do cartão (se houver)
                                 token: formData.token,
                                 installments: formData.installments,
                                 issuer_id: formData.issuer_id,

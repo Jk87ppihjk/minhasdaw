@@ -370,14 +370,10 @@ app.post('/api/checkout/process_payment', authenticateToken, async (req, res) =>
     }
 });
 
-// Rota LEGACY para preferência (caso ainda seja usada)
+// Rota LEGACY para preferência (Mantida, mas com URL segura para evitar crash)
 app.post('/api/checkout/create-preference', authenticateToken, async (req, res) => {
     try {
-        // Safe Fallback for URL
-        const frontUrl = process.env.FRONTEND_URL && process.env.FRONTEND_URL.startsWith('http') 
-                       ? process.env.FRONTEND_URL 
-                       : 'http://localhost:5173';
-
+        const frontUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
         const preference = new Preference(mpClient);
         const result = await preference.create({
             body: {
