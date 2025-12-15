@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
-import { Music, FolderOpen, ArrowLeft, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, ArrowLeftRight, Volume2, Trash2, LogOut } from 'lucide-react';
+import { Music, FolderOpen, ArrowLeft, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, ArrowLeftRight, Volume2, Trash2, LogOut, X } from 'lucide-react';
 import saveAs from 'file-saver';
 import { audioEngine } from './services/AudioEngine';
 import { Track, TrackType, AudioEngineState, Clip, EffectSettings, ContextMenuState } from './types';
@@ -1022,4 +1022,199 @@ export default function App() {
       <ReleaseNotes />
 
       {/* Modals */}
-      <ProjectManager 
+      <ProjectManager
+        isOpen={projectManagerOpen}
+        mode={projectManagerMode}
+        onClose={() => setProjectManagerOpen(false)}
+        rootHandle={rootHandle}
+        onSelectRoot={handleSelectRootFolder}
+        onConfirmAction={projectManagerMode === 'save' ? handleSaveProject : handleLoadProject}
+      />
+
+      {showAiModal && (
+        <AiAssistantModal
+            tracks={tracks}
+            onApplyMix={handleApplyAiMix}
+            onClose={() => setShowAiModal(false)}
+        />
+      )}
+
+      {showEffectSelector && (
+          <EffectSelector 
+              onSelect={(effectId) => {
+                  if (effectSelectorTrackId) addEffect(effectSelectorTrackId, effectId);
+              }}
+              onClose={() => setShowEffectSelector(false)}
+          />
+      )}
+
+      {/* Main Layout */}
+      <Header 
+        audioState={audioState}
+        setAudioState={setAudioState}
+        togglePlay={togglePlay}
+        handleStop={handleStop}
+        toggleRecord={toggleRecord}
+        formatTime={formatTime}
+        isMonitoring={isMonitoring}
+        toggleMonitoring={toggleMonitoring}
+        undoTracks={undoTracks}
+        redoTracks={redoTracks}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        saveProjectToDisk={handleQuickSave}
+        openProjectFromDisk={() => toggleProjectManager('open')}
+        onGoHome={handleGoHome}
+        exportWav={exportWav}
+        toggleTheme={toggleTheme}
+        toggleFullScreen={toggleFullScreen}
+        isFullScreen={isFullScreen}
+        isTrackListOpen={isTrackListOpen}
+        setIsTrackListOpen={setIsTrackListOpen}
+        isSidebarOpen={isSidebarOpen}
+        setIsSidebarOpen={toggleMixer} // Use the toggle function
+        isCompositionOpen={isCompositionOpen}
+        setIsCompositionOpen={toggleComposition} // Use the toggle function
+        currentProjectName={currentProjectName}
+        onSelectMaster={() => setSelectedTrackId('MASTER')}
+        selectedTrackId={selectedTrackId}
+      />
+
+      <div className="flex-1 flex overflow-hidden relative">
+        <TrackList 
+            tracks={tracks}
+            selectedTrackId={selectedTrackId}
+            setSelectedTrackId={setSelectedTrackId}
+            updateTrack={updateTrack}
+            addNewTrack={addNewTrack}
+            handleImportBeat={handleImportBeat}
+            duplicateTrack={duplicateTrack}
+            deleteTrack={deleteTrack}
+            editTrackName={editTrackName}
+            isOpen={isTrackListOpen}
+            isMobile={isMobile}
+            closeOnMobile={() => setIsTrackListOpen(false)}
+            scrollTop={scrollTop}
+        />
+
+        <Timeline 
+            tracks={tracks}
+            audioState={audioState}
+            setAudioState={setAudioState}
+            zoomLevel={zoomLevel}
+            pixelsPerSecond={pixelsPerSecond}
+            handleZoom={handleZoom}
+            scrollRef={scrollContainerRef}
+            setScrollTop={setScrollTop}
+            activeTool={activeTool}
+            setActiveTool={setActiveTool}
+            toggleLoop={toggleLoop}
+            togglePlay={togglePlay}
+            selectedClipId={selectedClipId}
+            deleteSelectedClip={deleteSelectedClip}
+            splitTrack={splitTrack}
+            handleClipInteractionStart={handleClipInteractionStart}
+            handleContextMenu={handleContextMenu}
+            isCreatingLoop={isCreatingLoopRef.current}
+            loopStartAnchor={loopStartAnchorRef.current}
+            isDraggingLoopStart={isDraggingLoopStartRef.current}
+            isDraggingLoopEnd={isDraggingLoopEndRef.current}
+            isScrubbing={isScrubbingRef.current}
+            currentScrubTime={currentScrubTimeRef.current}
+            wasPlayingRef={wasPlayingRef}
+            isCreatingLoopRef={isCreatingLoopRef}
+            isDraggingLoopStartRef={isDraggingLoopStartRef}
+            isDraggingLoopEndRef={isDraggingLoopEndRef}
+            isScrubbingRef={isScrubbingRef}
+            loopStartAnchorRef={loopStartAnchorRef}
+        />
+
+        <MixerSidebar 
+            isOpen={isSidebarOpen}
+            setIsOpen={setIsSidebarOpen}
+            isMobile={isMobile}
+            selectedTrack={selectedTrack}
+            updateTrack={updateTrack}
+            updateEffects={updateEffects}
+            setEffectSelectorTrackId={setEffectSelectorTrackId}
+            setShowEffectSelector={setShowEffectSelector}
+            setOpenedEffect={setOpenedEffect}
+            setTracks={setTracks}
+            setMasterTrack={setMasterTrack}
+            onOpenAiAssistant={() => setShowAiModal(true)}
+        />
+
+        <CompositionAssistant
+            isOpen={isCompositionOpen}
+            onClose={() => setIsCompositionOpen(false)}
+            isMobile={isMobile}
+            selectedClip={selectedClip}
+        />
+      </div>
+      
+      {/* Context Menus & Overlays */}
+      {contextMenu.visible && (
+        <div 
+            className="fixed z-50 bg-[#111] border border-zinc-700 rounded-lg shadow-xl py-1 min-w-[160px]"
+            style={{ top: contextMenu.y, left: contextMenu.x }}
+            onClick={(e) => e.stopPropagation()}
+        >
+            <button onClick={() => processClipBuffer('gain')} className="w-full text-left px-4 py-2 text-xs hover:bg-zinc-800 text-zinc-300 hover:text-white">Normalize Gain</button>
+            <button onClick={() => processClipBuffer('reverse')} className="w-full text-left px-4 py-2 text-xs hover:bg-zinc-800 text-zinc-300 hover:text-white">Reverse Audio</button>
+            <button onClick={() => processClipBuffer('fadein')} className="w-full text-left px-4 py-2 text-xs hover:bg-zinc-800 text-zinc-300 hover:text-white">Fade In (1s)</button>
+            <button onClick={() => processClipBuffer('fadeout')} className="w-full text-left px-4 py-2 text-xs hover:bg-zinc-800 text-zinc-300 hover:text-white">Fade Out (1s)</button>
+            <div className="h-[1px] bg-zinc-800 my-1"></div>
+            <button onClick={() => deleteSelectedClip()} className="w-full text-left px-4 py-2 text-xs hover:bg-red-900/50 text-red-400">Delete Clip</button>
+        </div>
+      )}
+
+      {/* Effect Rack Modal (When clicking specific effect to edit) */}
+      {openedEffect && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setOpenedEffect(null)}>
+              <div className="relative bg-[#050505] border border-zinc-700 rounded-lg shadow-2xl overflow-hidden max-w-4xl max-h-[90vh] w-full mx-4 flex flex-col" onClick={e => e.stopPropagation()}>
+                  <div className="flex justify-between items-center p-3 bg-[#0a0a0a] border-b border-zinc-800">
+                      <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">{openedEffect.effectId}</span>
+                      <button onClick={() => setOpenedEffect(null)}><X className="w-4 h-4 text-zinc-500 hover:text-white" /></button>
+                  </div>
+                  <div className="p-0 bg-black overflow-y-auto custom-scrollbar" style={{ minHeight: '300px' }}>
+                      {(() => {
+                          const track = openedEffect.trackId === 'MASTER' ? masterTrack : tracks.find(t => t.id === openedEffect.trackId);
+                          if (!track) return null;
+                          const settings = track.effects[openedEffect.effectId];
+                          const plugin = EffectRegistry.get(openedEffect.effectId);
+                          
+                          // Handle Plugin-based UI
+                          if (plugin) {
+                              return <plugin.component 
+                                  trackId={track.id} 
+                                  settings={settings || plugin.defaultSettings} 
+                                  onChange={(newSettings: any) => updateEffects(track.id, { [openedEffect.effectId]: newSettings })} 
+                              />;
+                          }
+
+                          // Handle Legacy UI
+                          switch(openedEffect.effectId) {
+                              case 'parametricEQ': return <ParametricEQ trackId={track.id} settings={settings} onChange={(s) => updateEffects(track.id, { parametricEQ: s })} />;
+                              case 'compressor': return <CompressorEffect trackId={track.id} settings={settings} onChange={(s) => updateEffects(track.id, { compressor: s })} />;
+                              case 'reverb': return <ReverbEffect trackId={track.id} settings={settings} onChange={(s) => updateEffects(track.id, { reverb: s })} />;
+                              case 'autoPitch': return <TunerEffect trackId={track.id} settings={settings} onChange={(s) => updateEffects(track.id, { autoPitch: s })} />;
+                              case 'distortion': return <DistortionEffect value={settings} onChange={(s) => updateEffects(track.id, { distortion: s })} />;
+                              default: return <div className="p-8 text-center text-zinc-500">Generic Interface Not Implemented</div>;
+                          }
+                      })()}
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Processing Overlay */}
+      {isProcessing && (
+          <div className="fixed inset-0 z-[200] bg-black/80 flex flex-col items-center justify-center">
+              <div className="w-12 h-12 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin mb-4"></div>
+              <span className="text-white font-bold tracking-widest uppercase text-sm animate-pulse">{processingMessage}</span>
+          </div>
+      )}
+
+    </div>
+  );
+}
