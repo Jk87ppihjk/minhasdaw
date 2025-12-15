@@ -1,3 +1,4 @@
+
 import { Track, Clip, EffectSettings } from '../types';
 import { AudioContextManager } from './audio/AudioContextManager';
 import { AudioProcessor } from './audio/AudioProcessor';
@@ -169,8 +170,17 @@ class AudioEngineService {
   // --- Recording Logic ---
 
   /**
+   * Converte o Blob gravado em um AudioBuffer tocável.
+   * Útil para garantir que o áudio gravado (comprimido) seja decodificado corretamente para reprodução.
+   */
+  public async processRecordedBlob(blob: Blob): Promise<AudioBuffer> {
+    const arrayBuffer = await blob.arrayBuffer();
+    return await this.ctxManager.decodeAudioData(arrayBuffer);
+  }
+
+  /**
    * Inicia a gravação.
-   * @param enableMonitoring Se true, o áudio do microfone será reproduzido nas caixas de som/fone (cuidado com feedback).
+   * @param enableMonitoring Se true, o áudio do microfone será reproduzido nas caixas de som/fone.
    */
   startRecording = async (enableMonitoring: boolean = true) => {
     this.audioChunks = [];
@@ -198,9 +208,9 @@ class AudioEngineService {
         // Conexão: Gain -> Destination (para o MediaRecorder gravar)
         this._recGain.connect(this._recDest);
 
-        // --- CORREÇÃO: Monitoramento (Ouvir enquanto grava) ---
-        // Conecta o ganho também ao masterGain para sair nas caixas de som
+        // --- Monitoramento (Ouvir enquanto grava) ---
         if (enableMonitoring) {
+            // Conecta ao Master Gain para ouvir o que está sendo gravado
             this._recGain.connect(this.ctxManager.masterGain);
         }
 
@@ -210,15 +220,13 @@ class AudioEngineService {
         this.recordingDataArray = new Uint8Array(this.recordingAnalyser.frequencyBinCount);
         this._recGain.connect(this.recordingAnalyser);
 
-        // --- Codec Selection ---
-        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-            this.recordingMimeType = 'audio/webm;codecs=opus';
-        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-            this.recordingMimeType = 'audio/webm';
-        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        // --- Codec Selection (Prioridade MP4 para compatibilidade, depois WebM) ---
+        if (MediaRecorder.isTypeSupported('audio/mp4')) {
             this.recordingMimeType = 'audio/mp4'; 
+        } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+            this.recordingMimeType = 'audio/webm;codecs=opus';
         } else {
-            this.recordingMimeType = ''; 
+            this.recordingMimeType = 'audio/webm'; 
         }
 
         const options = this.recordingMimeType ? { mimeType: this.recordingMimeType } : undefined;
@@ -245,28 +253,13 @@ class AudioEngineService {
 
   stopRecording = (): Promise<Blob> => {
       return new Promise((resolve) => {
-          // Cleanup Nodes
-          if (this.recordingAnalyser) { 
-              this.recordingAnalyser.disconnect(); 
-              this.recordingAnalyser = null; 
-          }
-          
-          if (this._recSource) { 
-              this._recSource.disconnect(); 
-              this._recSource = null; 
-          }
-          
-          if (this._recGain) { 
-              // Ao desconectar sem argumentos, ele desconecta do Destino E do MasterGain (parando o monitoramento)
-              this._recGain.disconnect(); 
-              this._recGain = null; 
-          }
-          
-          if (this._recDest) { 
-              this._recDest = null; 
-          }
-
           if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
+              // Cleanup force
+              if (this.recordingAnalyser) { this.recordingAnalyser.disconnect(); this.recordingAnalyser = null; }
+              if (this._recGain) { this._recGain.disconnect(); this._recGain = null; }
+              if (this._recSource) { this._recSource.disconnect(); this._recSource = null; }
+              this._recDest = null;
+              
               resolve(new Blob([], { type: this.recordingMimeType || 'audio/webm' }));
               return;
           }
@@ -274,6 +267,22 @@ class AudioEngineService {
           this.mediaRecorder.onstop = () => {
               const blob = new Blob(this.audioChunks, { type: this.recordingMimeType || 'audio/webm' });
               this.audioChunks = [];
+              
+              // Limpeza rigorosa dos nós de áudio para parar o monitoramento e liberar memória
+              if (this.recordingAnalyser) { 
+                  this.recordingAnalyser.disconnect(); 
+                  this.recordingAnalyser = null; 
+              }
+              if (this._recGain) { 
+                  this._recGain.disconnect(); // Desconecta de TODOS os destinos (Gravador e Master)
+                  this._recGain = null; 
+              }
+              if (this._recSource) { 
+                  this._recSource.disconnect(); 
+                  this._recSource = null; 
+              }
+              this._recDest = null;
+
               if (this.mediaStream) {
                   this.mediaStream.getTracks().forEach(track => track.stop());
                   this.mediaStream = null;
@@ -286,4 +295,4 @@ class AudioEngineService {
   }
 }
 
-export const audioEngine = new AudioEngineService(); 
+export const audioEngine = new AudioEngineService();

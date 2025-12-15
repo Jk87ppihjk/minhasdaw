@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Music, FolderOpen, ArrowLeft, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, ArrowLeftRight, Volume2, Trash2 } from 'lucide-react';
 import JSZip from 'jszip';
@@ -264,7 +265,9 @@ export default function App() {
     audioEngine.resumeContext();
     if (audioState.isRecording) {
       const blob = await audioEngine.stopRecording();
-      const audioBuffer = await audioEngine.decodeAudioData(await blob.arrayBuffer());
+      // Use helper method to correctly decode recorded blob to AudioBuffer
+      const audioBuffer = await audioEngine.processRecordedBlob(blob);
+      
       if (recordingClipIdRef.current && recordingTrackIdRef.current) {
           const newClip: Clip = { id: recordingClipIdRef.current, name: "Rec Take", blob, buffer: audioBuffer, duration: audioBuffer.duration, audioOffset: 0, startTime: recordingStartTimeRef.current };
           setTracks(prev => prev.map(t => t.id === recordingTrackIdRef.current ? { ...t, clips: t.clips.map(c => c.id === recordingClipIdRef.current ? newClip : c) } : t));
@@ -273,7 +276,8 @@ export default function App() {
       setAudioState(prev => ({ ...prev, isRecording: false }));
     } else {
       try {
-        await audioEngine.startRecording(); recordingStartTimeRef.current = audioState.currentTime; recordingWaveformRef.current = [];
+        await audioEngine.startRecording(true); // Enable monitoring
+        recordingStartTimeRef.current = audioState.currentTime; recordingWaveformRef.current = [];
         let recTrackId = selectedTrackId;
         if (!tracks.find(t => t.id === selectedTrackId)?.type.includes('VOCAL')) {
             const newTrack: Track = { id: crypto.randomUUID(), name: `Vocal Rec`, type: TrackType.VOCAL, volume: 1.0, pan: 0, muted: false, solo: false, clips: [], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] };
