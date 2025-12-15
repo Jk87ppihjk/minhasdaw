@@ -102,13 +102,13 @@ const TremoloComponent: React.FC<{ trackId: string, settings: TremoloSettings, o
           // Outer Glow
           ctx.beginPath();
           ctx.arc(cx, cy, size + 10, 0, Math.PI*2);
-          ctx.fillStyle = `rgba(230, 194, 0, ${opacity * 0.2})`;
+          ctx.fillStyle = `rgba(255, 255, 255, ${opacity * 0.2})`;
           ctx.fill();
 
           // Core
           ctx.beginPath();
           ctx.arc(cx, cy, size, 0, Math.PI*2);
-          ctx.fillStyle = settings.active ? '#e6c200' : '#333';
+          ctx.fillStyle = settings.active ? '#fff' : '#333';
           ctx.fill();
           
           // Rings
@@ -132,7 +132,7 @@ const TremoloComponent: React.FC<{ trackId: string, settings: TremoloSettings, o
         </div>
         
         {/* Controls */}
-        <div className="flex-1 flex items-center justify-around p-4 bg-[#111] border-t-2 border-[#e6c200]">
+        <div className="flex-1 flex items-center justify-around p-4 bg-[#0a0a0a] border-t border-[#333]">
             <Knob 
                 label="SPEED" 
                 value={settings.speed} 
@@ -150,7 +150,7 @@ const TremoloComponent: React.FC<{ trackId: string, settings: TremoloSettings, o
             
             <button 
                 onClick={() => onChange({...settings, active: !settings.active})}
-                className={`text-[10px] font-bold px-4 py-2 border ${settings.active ? 'border-[#e6c200] text-[#e6c200]' : 'border-[#333] text-[#555]'}`}
+                className={`text-[10px] font-bold px-4 py-2 border ${settings.active ? 'border-white text-white' : 'border-[#333] text-[#555]'}`}
             >
                 {settings.active ? "ON" : "OFF"}
             </button>
@@ -162,7 +162,7 @@ const TremoloComponent: React.FC<{ trackId: string, settings: TremoloSettings, o
 // 4. Exportação
 export const TremoloDesertPlugin: EffectPlugin<TremoloSettings> = {
   id: 'tremoloDesert',
-  name: 'Tremolo Desert',
+  name: 'Tremolo Studio',
   defaultSettings: { speed: 4, depth: 0.5, active: true },
   initialize: initializeAudio,
   update: updateAudio,

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monochrome Studio</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
         theme: {
@@ -15,18 +15,18 @@
               mono: ['JetBrains Mono', 'monospace'],
             },
             colors: {
-              desert: {
-                50: '#fffaeb',
-                100: '#fff3c7',
-                200: '#ffe58a',
-                300: '#ffd24d',
-                400: '#ffc11f',
-                500: '#e6c200', /* Primary Gold */
-                600: '#cc9a00',
-                700: '#a37200',
-                800: '#85580a',
-                900: '#71480f',
-                950: '#422602',
+              studio: {
+                50: '#f9fafb',
+                100: '#f3f4f6',
+                200: '#e5e7eb',
+                300: '#d1d5db',
+                400: '#9ca3af',
+                500: '#6b7280',
+                600: '#4b5563',
+                700: '#374151',
+                800: '#1f2937',
+                900: '#111827',
+                950: '#030712',
               }
             }
           }
@@ -40,19 +40,20 @@
         height: 6px;
       }
       ::-webkit-scrollbar-track {
-        background: #09090b; 
+        background: #000; 
       }
       ::-webkit-scrollbar-thumb {
         background: #333; 
         border-radius: 3px;
+        border: 1px solid #000;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #e6c200; 
+        background: #555; 
       }
       body {
-        background-color: #050505;
+        background-color: #000000;
         color: #e4e4e7;
-        /* Desabilita seleção de texto globalmente */
+        /* Disable text selection globally */
         -webkit-user-select: none;
         -moz-user-select: none;
         -ms-user-select: none;

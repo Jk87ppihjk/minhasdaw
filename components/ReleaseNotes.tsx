@@ -32,12 +32,12 @@ export const ReleaseNotes: React.FC = () => {
         <div className="bg-[#0a0a0a] border-b border-zinc-800 p-6 flex justify-between items-start">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3">
-                <span className="bg-[#e6c200] text-black text-[10px] font-black px-2 py-1 rounded uppercase tracking-widest">Update</span>
+                <span className="bg-white text-black text-[10px] font-black px-2 py-1 rounded uppercase tracking-widest">Update</span>
                 <h2 className="text-2xl font-bold text-white tracking-tight">O que há de novo</h2>
             </div>
             <div className="flex items-center gap-2 text-zinc-500 font-mono text-xs">
                 <span>VERSION_ID:</span>
-                <span className="text-[#e6c200]">{CURRENT_VERSION}</span>
+                <span className="text-white">{CURRENT_VERSION}</span>
             </div>
           </div>
         </div>
@@ -48,7 +48,7 @@ export const ReleaseNotes: React.FC = () => {
             {/* Improvements Section */}
             <div className="mb-8">
                 <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-[#e6c200]" />
+                    <Zap className="w-4 h-4 text-white" />
                     Novas Funcionalidades
                 </h3>
                 <ul className="space-y-3">
@@ -58,7 +58,7 @@ export const ReleaseNotes: React.FC = () => {
                         { title: "Precision Zoom", desc: "O grid se adapta automaticamente ao nível de zoom." }
                     ].map((item, i) => (
                         <li key={i} className="flex items-start gap-3 p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50">
-                            <Grid className="w-4 h-4 text-[#e6c200] mt-0.5 shrink-0" />
+                            <Grid className="w-4 h-4 text-white mt-0.5 shrink-0" />
                             <div>
                                 <strong className="text-zinc-200 text-sm block">{item.title}</strong>
                                 <span className="text-zinc-500 text-xs">{item.desc}</span>
@@ -102,7 +102,7 @@ export const ReleaseNotes: React.FC = () => {
             </button>
             <button 
                 onClick={() => handleClose(true)}
-                className="flex-1 px-4 py-3 rounded-xl bg-[#e6c200] text-black font-bold text-xs uppercase tracking-wider hover:bg-[#ffe033] transition-colors flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-3 rounded-xl bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
             >
                 Entendi (Não exibir mais)
                 <ArrowRight className="w-4 h-4" />

@@ -92,7 +92,7 @@ export const FilterEffect: React.FC<FilterEffectProps> = ({ trackId, settings, o
 
           // Laser Cursor
           ctx.beginPath();
-          ctx.strokeStyle = "rgba(230, 194, 0, 0.3)";
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
           ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
           ctx.moveTo(0, cy); ctx.lineTo(w, cy);
           ctx.stroke();
@@ -100,9 +100,9 @@ export const FilterEffect: React.FC<FilterEffectProps> = ({ trackId, settings, o
           // Cursor Dot
           ctx.beginPath();
           ctx.arc(cx, cy, 8 + (settings.y * 10), 0, Math.PI * 2);
-          ctx.fillStyle = isActive ? "#e6c200" : "#444";
+          ctx.fillStyle = isActive ? "#ffffff" : "#444";
           ctx.shadowBlur = isActive ? 15 : 0;
-          ctx.shadowColor = "#e6c200";
+          ctx.shadowColor = "#ffffff";
           ctx.fill();
           ctx.shadowBlur = 0;
 
@@ -122,9 +122,9 @@ export const FilterEffect: React.FC<FilterEffectProps> = ({ trackId, settings, o
               ctx.lineTo(w, h);
               ctx.lineTo(0, h);
               ctx.lineWidth = 2;
-              ctx.strokeStyle = isActive ? "#e6c200" : "#555";
+              ctx.strokeStyle = isActive ? "#ffffff" : "#555";
               ctx.stroke();
-              ctx.fillStyle = isActive ? "rgba(230, 194, 0, 0.1)" : "rgba(80, 80, 80, 0.1)";
+              ctx.fillStyle = isActive ? "rgba(255, 255, 255, 0.1)" : "rgba(80, 80, 80, 0.1)";
               ctx.fill();
           }
 
@@ -169,22 +169,22 @@ export const FilterEffect: React.FC<FilterEffectProps> = ({ trackId, settings, o
       </div>
 
       {/* Controls Panel */}
-      <div className="bg-[#111] p-4 border-t-2 border-[#e6c200] shrink-0 flex flex-col gap-4 h-[160px]">
+      <div className="bg-[#0a0a0a] p-4 border-t border-[#333] shrink-0 flex flex-col gap-4 h-[160px]">
           
           {/* Info Header */}
           <div className="flex justify-between items-end border-b border-[#333] pb-2">
               <div className="flex flex-col">
                   <span className="text-[9px] text-[#888] font-bold uppercase">CUTOFF FREQ</span>
-                  <span className="text-xl text-[#e6c200] font-bold text-shadow">{uiState.freq}</span>
+                  <span className="text-xl text-white font-bold text-shadow">{uiState.freq}</span>
               </div>
               
-              <div className={`px-3 py-1 rounded-full text-[10px] font-bold border ${uiState.type !== 'CLEAN' ? 'bg-[#e6c200] text-black border-[#e6c200]' : 'bg-black text-[#555] border-[#333]'}`}>
+              <div className={`px-3 py-1 rounded-full text-[10px] font-bold border ${uiState.type !== 'CLEAN' ? 'bg-white text-black border-white' : 'bg-black text-[#555] border-[#333]'}`}>
                   {uiState.type}
               </div>
 
               <div className="flex flex-col text-right">
                   <span className="text-[9px] text-[#888] font-bold uppercase">RESONANCE</span>
-                  <span className="text-xl text-[#e6c200] font-bold text-shadow">{uiState.res}</span>
+                  <span className="text-xl text-white font-bold text-shadow">{uiState.res}</span>
               </div>
           </div>
 
@@ -197,7 +197,7 @@ export const FilterEffect: React.FC<FilterEffectProps> = ({ trackId, settings, o
               >
                   {/* Fill Logic */}
                   <div 
-                    className="absolute top-0 bottom-0 bg-[#e6c200] opacity-30 pointer-events-none"
+                    className="absolute top-0 bottom-0 bg-white opacity-30 pointer-events-none"
                     style={{
                         left: settings.x < 0.5 ? `${settings.x * 100}%` : '50%',
                         width: settings.x < 0.5 ? `${(0.5 - settings.x) * 100}%` : `${(settings.x - 0.5) * 100}%`,
@@ -220,7 +220,7 @@ export const FilterEffect: React.FC<FilterEffectProps> = ({ trackId, settings, o
           {/* Bypass */}
           <button 
              onClick={() => updateParam({ active: !settings.active })}
-             className={`w-full text-[10px] font-bold py-1 uppercase tracking-widest ${settings.active ? 'text-[#e6c200] hover:text-white' : 'text-[#555]'}`}
+             className={`w-full text-[10px] font-bold py-1 uppercase tracking-widest ${settings.active ? 'text-white hover:text-white' : 'text-[#555]'}`}
           >
               {settings.active ? "FILTER ACTIVE" : "BYPASS"}
           </button>

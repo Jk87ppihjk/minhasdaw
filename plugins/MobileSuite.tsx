@@ -5,8 +5,8 @@ import { audioEngine } from '../services/AudioEngine';
 // --- HELPER UI FOR MOBILE ---
 const MobileContainer: React.FC<{ children: React.ReactNode, title: string }> = ({ children, title }) => (
     <div className="flex flex-col w-full h-full bg-[#050505] border border-[#222]">
-        <div className="bg-[#111] border-b border-[#222] py-2 text-center shrink-0">
-            <span className="text-[#e6c200] font-black text-xs uppercase tracking-[0.2em]">{title}</span>
+        <div className="bg-[#0a0a0a] border-b border-[#222] py-2 text-center shrink-0">
+            <span className="text-white font-black text-xs uppercase tracking-[0.2em]">{title}</span>
         </div>
         <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
             {children}
@@ -25,7 +25,7 @@ interface MobileFaderProps {
     color?: string;
 }
 
-const MobileFader: React.FC<MobileFaderProps> = ({ value, min, max, onChange, label, unit = "", color = "bg-[#e6c200]" }) => {
+const MobileFader: React.FC<MobileFaderProps> = ({ value, min, max, onChange, label, unit = "", color = "bg-white" }) => {
     const containerRef = useRef<HTMLDivElement>(null);
 
     const handleInteraction = (clientY: number) => {
@@ -69,7 +69,7 @@ const MobileFader: React.FC<MobileFaderProps> = ({ value, min, max, onChange, la
     return (
         <div className="flex flex-col items-center h-full w-full max-w-[80px] gap-2 select-none touch-none">
             {/* Value Display */}
-            <div className="text-[#e6c200] font-mono text-xs font-bold text-center h-4">
+            <div className="text-white font-mono text-xs font-bold text-center h-4">
                 {Math.round(value)}{unit}
             </div>
 
@@ -170,10 +170,11 @@ const PocketCompUI: React.FC<any> = ({ settings, onChange }) => (
                     onChange={(v) => onChange({...settings, amount: v})} 
                     label="SQUASH"
                     unit="%"
+                    color="bg-white"
                 />
             </div>
             <div className="flex flex-col justify-center items-center">
-                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-[#e6c200] text-black border-[#e6c200] shadow-[0_0_20px_rgba(230,194,0,0.3)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
+                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.3)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
                     {settings.active ? "ACTIVE" : "BYPASS"}
                 </button>
             </div>
@@ -229,9 +230,9 @@ const updateEQ = (node: AudioNode, s: PocketEQSettings, ctx: AudioContext) => {
 const PocketEQUI: React.FC<any> = ({ settings, onChange }) => (
     <MobileContainer title="POCKET EQ">
         <div className="flex justify-around w-full h-full py-2 gap-2">
-            <MobileFader value={settings.low} min={-12} max={12} label="LOW" unit="dB" onChange={(v) => onChange({...settings, low: v})} />
-            <MobileFader value={settings.mid} min={-12} max={12} label="MID" unit="dB" onChange={(v) => onChange({...settings, mid: v})} />
-            <MobileFader value={settings.high} min={-12} max={12} label="HIGH" unit="dB" onChange={(v) => onChange({...settings, high: v})} />
+            <MobileFader value={settings.low} min={-12} max={12} label="LOW" unit="dB" onChange={(v) => onChange({...settings, low: v})} color="bg-zinc-400" />
+            <MobileFader value={settings.mid} min={-12} max={12} label="MID" unit="dB" onChange={(v) => onChange({...settings, mid: v})} color="bg-zinc-400" />
+            <MobileFader value={settings.high} min={-12} max={12} label="HIGH" unit="dB" onChange={(v) => onChange({...settings, high: v})} color="bg-zinc-400" />
         </div>
     </MobileContainer>
 );
@@ -295,7 +296,7 @@ const PocketDriveUI: React.FC<any> = ({ settings, onChange }) => (
         <div className="flex flex-row items-stretch justify-center h-full w-full gap-6">
             <div className="flex-1 max-w-[120px] h-full py-4 relative">
                 {/* Visual Glow */}
-                <div className={`absolute inset-0 bg-orange-600 blur-2xl transition-opacity duration-300 pointer-events-none ${settings.active ? 'opacity-20' : 'opacity-0'}`}></div>
+                <div className={`absolute inset-0 bg-white blur-2xl transition-opacity duration-300 pointer-events-none ${settings.active ? 'opacity-20' : 'opacity-0'}`}></div>
                 
                 <MobileFader 
                     value={settings.drive} 
@@ -303,11 +304,11 @@ const PocketDriveUI: React.FC<any> = ({ settings, onChange }) => (
                     max={100} 
                     onChange={(v) => onChange({...settings, drive: v})} 
                     label="DRIVE"
-                    color="bg-orange-500"
+                    color="bg-white"
                 />
             </div>
             <div className="flex flex-col justify-center items-center">
-                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-orange-600 text-white border-orange-600 shadow-[0_0_20px_rgba(234,88,12,0.4)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
+                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.4)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
                     {settings.active ? "HOT" : "COLD"}
                 </button>
             </div>
@@ -385,11 +386,11 @@ const PocketSpaceUI: React.FC<any> = ({ settings, onChange }) => (
                     onChange={(v) => onChange({...settings, mix: v})} 
                     label="AMBIENCE"
                     unit="%"
-                    color="bg-indigo-500"
+                    color="bg-zinc-300"
                 />
             </div>
             <div className="flex flex-col justify-center items-center">
-                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-indigo-600 text-white border-indigo-600 shadow-[0_0_20px_rgba(79,70,229,0.4)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
+                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-zinc-300 text-black border-zinc-300 shadow-[0_0_20px_rgba(255,255,255,0.4)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
                     {settings.active ? "ON" : "OFF"}
                 </button>
             </div>
@@ -467,11 +468,11 @@ const PocketGateUI: React.FC<any> = ({ settings, onChange }) => (
                     onChange={(v) => onChange({...settings, threshold: v})} 
                     label="FLOOR"
                     unit="dB"
-                    color="bg-emerald-500"
+                    color="bg-zinc-500"
                 />
             </div>
             <div className="flex flex-col justify-center items-center">
-                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-emerald-600 text-white border-emerald-600 shadow-[0_0_20px_rgba(5,150,105,0.4)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
+                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-zinc-500 text-white border-zinc-500 shadow-[0_0_20px_rgba(255,255,255,0.4)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
                     {settings.active ? "GATE ON" : "GATE OFF"}
                 </button>
             </div>
@@ -562,14 +563,14 @@ const PocketWideUI: React.FC<any> = ({ settings, onChange }) => (
                     onChange={(v) => onChange({...settings, width: v})} 
                     label="WIDTH"
                     unit="%"
-                    color="bg-cyan-500"
+                    color="bg-zinc-200"
                 />
             </div>
             <div className="flex flex-col justify-center items-center gap-2">
                 <div className="text-[10px] text-[#555] font-bold uppercase tracking-wider text-center">
                     {settings.width < 50 ? "MONO" : (settings.width > 120 ? "HYPER" : "STEREO")}
                 </div>
-                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-cyan-600 text-white border-cyan-600 shadow-[0_0_20px_rgba(8,145,178,0.4)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
+                <button onClick={() => onChange({...settings, active: !settings.active})} className={`w-24 py-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all ${settings.active ? 'bg-zinc-200 text-black border-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.4)]' : 'bg-[#111] text-[#555] border-[#333]'}`}>
                     {settings.active ? "ACTIVE" : "BYPASS"}
                 </button>
             </div>
@@ -736,7 +737,7 @@ const PocketTuneUI: React.FC<any> = ({ settings, onChange, trackId }) => {
                         max={0.5} 
                         onChange={(v) => onChange({...settings, speed: v})} 
                         label="SPEED"
-                        color="bg-purple-500"
+                        color="bg-white"
                     />
 
                     {/* Amount Fader */}
@@ -747,11 +748,11 @@ const PocketTuneUI: React.FC<any> = ({ settings, onChange, trackId }) => {
                         onChange={(v) => onChange({...settings, amount: v})} 
                         label="AMOUNT"
                         unit="%"
-                        color="bg-purple-500"
+                        color="bg-white"
                     />
                 </div>
 
-                <button onClick={() => onChange({...settings, active: !settings.active})} className={`shrink-0 py-3 rounded font-bold text-xs uppercase tracking-widest border w-full transition-all ${settings.active ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-purple-500 shadow-[0_0_20px_rgba(147,51,234,0.4)]' : 'bg-transparent text-[#555] border-[#333]'}`}>
+                <button onClick={() => onChange({...settings, active: !settings.active})} className={`shrink-0 py-3 rounded font-bold text-xs uppercase tracking-widest border w-full transition-all ${settings.active ? 'bg-gradient-to-r from-gray-200 to-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.4)]' : 'bg-transparent text-[#555] border-[#333]'}`}>
                     {settings.active ? "CORRECTION ON" : "BYPASS"}
                 </button>
             </div>

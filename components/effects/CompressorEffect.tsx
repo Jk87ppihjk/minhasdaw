@@ -95,7 +95,7 @@ export const CompressorEffect: React.FC<CompressorEffectProps> = ({ trackId, set
           if (timeDataRef.current.length > 1) {
               const step = width / 300; // Resolution scaling
 
-              // Input (Gold)
+              // Input (White/Silver)
               ctx.beginPath();
               ctx.moveTo(0, mapY(timeDataRef.current[0].input, height));
               for (let i = 1; i < timeDataRef.current.length; i++) {
@@ -103,11 +103,11 @@ export const CompressorEffect: React.FC<CompressorEffectProps> = ({ trackId, set
                   const x = (i / timeDataRef.current.length) * width;
                   ctx.lineTo(x, mapY(timeDataRef.current[i].input, height));
               }
-              ctx.strokeStyle = "rgba(230, 194, 0, 0.8)";
+              ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
               ctx.lineWidth = 2;
               ctx.stroke();
 
-              // Reduction (Red Fill)
+              // Reduction (Gray Fill)
               ctx.beginPath();
               for (let i = 0; i < timeDataRef.current.length; i++) {
                   const x = (i / timeDataRef.current.length) * width;
@@ -120,7 +120,7 @@ export const CompressorEffect: React.FC<CompressorEffectProps> = ({ trackId, set
                   ctx.lineTo(x, y);
               }
               ctx.closePath();
-              ctx.fillStyle = "rgba(255, 50, 50, 0.7)";
+              ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
               ctx.fill();
           }
 
@@ -134,55 +134,55 @@ export const CompressorEffect: React.FC<CompressorEffectProps> = ({ trackId, set
   return (
     <div className="flex flex-col w-full h-full bg-[#000] text-[#f0f0f0] font-mono select-none">
         <style>{`
-            .desert-comp-slider { width: 100%; height: 4px; background: #333; appearance: none; border-radius: 2px; outline: none; margin-top: 5px; }
-            .desert-comp-slider::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; background: #e6c200; border-radius: 50%; cursor: pointer; box-shadow: 0 0 5px rgba(230, 194, 0, 0.4); border: 2px solid #000; }
+            .studio-comp-slider { width: 100%; height: 2px; background: #333; appearance: none; border-radius: 0px; outline: none; margin-top: 5px; }
+            .studio-comp-slider::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; background: #fff; border-radius: 50%; cursor: pointer; border: 2px solid #000; }
         `}</style>
 
         {/* Visualizer */}
-        <div className="flex-1 relative bg-[#000] border-b border-[#333] overflow-hidden" ref={containerRef}>
+        <div className="flex-1 relative bg-[#000] border-b border-[#222] overflow-hidden" ref={containerRef}>
             <canvas ref={canvasRef} className="block w-full h-full" />
-            <div className="absolute top-[10px] left-[15px] text-[10px] text-[#666] pointer-events-none">LINE: Input<br/>RED: Reduction</div>
-            <div className="absolute right-[10px] top-[10px] bottom-[10px] w-[12px] bg-[#111] border border-[#444] rounded-[2px] overflow-hidden">
-                <div id="grBarVisual" className="w-full bg-[#ff3333] absolute top-0 transition-[height] duration-75 ease-linear h-0"></div>
+            <div className="absolute top-[10px] left-[15px] text-[10px] text-[#444] pointer-events-none">LINE: Input<br/>SHADE: Reduction</div>
+            <div className="absolute right-[10px] top-[10px] bottom-[10px] w-[12px] bg-[#111] border border-[#333] rounded-[2px] overflow-hidden">
+                <div id="grBarVisual" className="w-full bg-[#fff] absolute top-0 transition-[height] duration-75 ease-linear h-0"></div>
             </div>
         </div>
 
         {/* Controls */}
-        <div className="bg-[#111] p-[20px] grid grid-cols-2 md:grid-cols-4 gap-x-[20px] gap-y-[20px] border-t-2 border-[#e6c200] shrink-0">
+        <div className="bg-[#050505] p-[20px] grid grid-cols-2 md:grid-cols-4 gap-x-[20px] gap-y-[20px] border-t border-[#333] shrink-0">
             {/* THRESHOLD */}
             <div className="flex flex-col gap-1">
-                <div className="flex justify-between"><span className="text-[10px] text-[#888] font-bold">THRESHOLD</span><span className="text-[12px] text-[#e6c200]">{settings.threshold.toFixed(1)} dB</span></div>
-                <input type="range" className="desert-comp-slider" min="-60" max="0" step="0.5" value={settings.threshold} onChange={(e) => updateParam('threshold', parseFloat(e.target.value))} />
+                <div className="flex justify-between"><span className="text-[10px] text-[#666] font-bold">THRESHOLD</span><span className="text-[12px] text-white">{settings.threshold.toFixed(1)} dB</span></div>
+                <input type="range" className="studio-comp-slider" min="-60" max="0" step="0.5" value={settings.threshold} onChange={(e) => updateParam('threshold', parseFloat(e.target.value))} />
             </div>
             {/* RATIO */}
             <div className="flex flex-col gap-1">
-                <div className="flex justify-between"><span className="text-[10px] text-[#888] font-bold">RATIO</span><span className="text-[12px] text-[#e6c200]">{settings.ratio.toFixed(1)}:1</span></div>
-                <input type="range" className="desert-comp-slider" min="1" max="20" step="0.1" value={settings.ratio} onChange={(e) => updateParam('ratio', parseFloat(e.target.value))} />
+                <div className="flex justify-between"><span className="text-[10px] text-[#666] font-bold">RATIO</span><span className="text-[12px] text-white">{settings.ratio.toFixed(1)}:1</span></div>
+                <input type="range" className="studio-comp-slider" min="1" max="20" step="0.1" value={settings.ratio} onChange={(e) => updateParam('ratio', parseFloat(e.target.value))} />
             </div>
             {/* ATTACK */}
             <div className="flex flex-col gap-1">
-                <div className="flex justify-between"><span className="text-[10px] text-[#888] font-bold">ATTACK</span><span className="text-[12px] text-[#e6c200]">{Math.round(settings.attack * 1000)} ms</span></div>
-                <input type="range" className="desert-comp-slider" min="0" max="1" step="0.001" value={settings.attack} onChange={(e) => updateParam('attack', parseFloat(e.target.value))} />
+                <div className="flex justify-between"><span className="text-[10px] text-[#666] font-bold">ATTACK</span><span className="text-[12px] text-white">{Math.round(settings.attack * 1000)} ms</span></div>
+                <input type="range" className="studio-comp-slider" min="0" max="1" step="0.001" value={settings.attack} onChange={(e) => updateParam('attack', parseFloat(e.target.value))} />
             </div>
             {/* RELEASE */}
             <div className="flex flex-col gap-1">
-                <div className="flex justify-between"><span className="text-[10px] text-[#888] font-bold">RELEASE</span><span className="text-[12px] text-[#e6c200]">{Math.round(settings.release * 1000)} ms</span></div>
-                <input type="range" className="desert-comp-slider" min="0.01" max="1" step="0.01" value={settings.release} onChange={(e) => updateParam('release', parseFloat(e.target.value))} />
+                <div className="flex justify-between"><span className="text-[10px] text-[#666] font-bold">RELEASE</span><span className="text-[12px] text-white">{Math.round(settings.release * 1000)} ms</span></div>
+                <input type="range" className="studio-comp-slider" min="0.01" max="1" step="0.01" value={settings.release} onChange={(e) => updateParam('release', parseFloat(e.target.value))} />
             </div>
             {/* KNEE */}
             <div className="flex flex-col gap-1">
-                <div className="flex justify-between"><span className="text-[10px] text-[#888] font-bold">KNEE</span><span className="text-[12px] text-[#e6c200]">{settings.knee}</span></div>
-                <input type="range" className="desert-comp-slider" min="0" max="40" step="1" value={settings.knee} onChange={(e) => updateParam('knee', parseFloat(e.target.value))} />
+                <div className="flex justify-between"><span className="text-[10px] text-[#666] font-bold">KNEE</span><span className="text-[12px] text-white">{settings.knee}</span></div>
+                <input type="range" className="studio-comp-slider" min="0" max="40" step="1" value={settings.knee} onChange={(e) => updateParam('knee', parseFloat(e.target.value))} />
             </div>
             {/* MAKEUP */}
             <div className="flex flex-col gap-1">
-                <div className="flex justify-between"><span className="text-[10px] text-[#888] font-bold">MAKEUP</span><span className="text-[12px] text-[#e6c200]">+{settings.makeup.toFixed(1)} dB</span></div>
-                <input type="range" className="desert-comp-slider" min="0" max="20" step="0.5" value={settings.makeup} onChange={(e) => updateParam('makeup', parseFloat(e.target.value))} />
+                <div className="flex justify-between"><span className="text-[10px] text-[#666] font-bold">MAKEUP</span><span className="text-[12px] text-white">+{settings.makeup.toFixed(1)} dB</span></div>
+                <input type="range" className="studio-comp-slider" min="0" max="20" step="0.5" value={settings.makeup} onChange={(e) => updateParam('makeup', parseFloat(e.target.value))} />
             </div>
             
             {/* BYPASS */}
             <div className="col-span-2 md:col-span-2 flex items-end justify-end">
-                <button onClick={() => updateParam('active', !settings.active ? 1 : 0)} className={`w-full border border-[#444] py-2 text-[12px] font-bold tracking-widest uppercase ${settings.active ? 'bg-[#e6c200] text-black border-[#e6c200]' : 'bg-[#222] text-[#666]'}`}>
+                <button onClick={() => updateParam('active', !settings.active ? 1 : 0)} className={`w-full border py-2 text-[12px] font-bold tracking-widest uppercase ${settings.active ? 'bg-white text-black border-white' : 'bg-[#111] text-[#666] border-[#333]'}`}>
                     {settings.active ? "COMPRESSOR ON" : "COMPRESSOR OFF"}
                 </button>
             </div>

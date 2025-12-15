@@ -30,13 +30,17 @@ const BASE_PX_PER_SEC = 50;
 
 // --- THEME CONFIGURATION ---
 const THEMES: Record<string, React.CSSProperties> = {
-  dark: { '--bg-main': '#050505', '--bg-panel': '#0a0a0a', '--bg-element': '#111', '--text-main': '#e4e4e7', '--text-muted': '#71717a', '--border-color': '#27272a', '--accent': '#e6c200', '--waveform-bg': '#27272a', '--waveform-wave': '#a1a1aa' } as React.CSSProperties,
-  light: { '--bg-main': '#f4f4f5', '--bg-panel': '#ffffff', '--bg-element': '#e4e4e7', '--text-main': '#18181b', '--text-muted': '#71717a', '--border-color': '#d4d4d8', '--accent': '#d97706', '--waveform-bg': '#e4e4e7', '--waveform-wave': '#52525b' } as React.CSSProperties,
-  yellow: { '--bg-main': '#fef08a', '--bg-panel': '#facc15', '--bg-element': '#eab308', '--text-main': '#422006', '--text-muted': '#854d0e', '--border-color': '#a16207', '--accent': '#000000', '--waveform-bg': '#ca8a04', '--waveform-wave': '#ffffff' } as React.CSSProperties,
-  blue: { '--bg-main': '#020617', '--bg-panel': '#0f172a', '--bg-element': '#1e293b', '--text-main': '#f1f5f9', '--text-muted': '#64748b', '--border-color': '#334155', '--accent': '#38bdf8', '--waveform-bg': '#1e293b', '--waveform-wave': '#7dd3fc' } as React.CSSProperties,
-  green: { '--bg-main': '#022c22', '--bg-panel': '#064e3b', '--bg-element': '#115e59', '--text-main': '#ccfbf1', '--text-muted': '#5eead4', '--border-color': '#134e4a', '--accent': '#34d399', '--waveform-bg': '#064e3b', '--waveform-wave': '#6ee7b7' } as React.CSSProperties,
-  red: { '--bg-main': '#2a0a0a', '--bg-panel': '#450a0a', '--bg-element': '#7f1d1d', '--text-main': '#fecdd3', '--text-muted': '#fb7185', '--border-color': '#881337', '--accent': '#f43f5e', '--waveform-bg': '#4c0519', '--waveform-wave': '#fda4af' } as React.CSSProperties,
-  purple: { '--bg-main': '#1e1b4b', '--bg-panel': '#312e81', '--bg-element': '#4338ca', '--text-main': '#e0e7ff', '--text-muted': '#818cf8', '--border-color': '#3730a3', '--accent': '#c084fc', '--waveform-bg': '#312e81', '--waveform-wave': '#a78bfa' } as React.CSSProperties
+  monochrome: { 
+    '--bg-main': '#000000', 
+    '--bg-panel': '#09090b', 
+    '--bg-element': '#18181b', 
+    '--text-main': '#ffffff', 
+    '--text-muted': '#71717a', 
+    '--border-color': '#27272a', 
+    '--accent': '#ffffff', 
+    '--waveform-bg': '#18181b', 
+    '--waveform-wave': '#e4e4e7' 
+  } as React.CSSProperties,
 };
 
 const BASE_DEFAULTS: EffectSettings = {
@@ -59,7 +63,7 @@ const BASE_DEFAULTS: EffectSettings = {
 export default function App() {
   // State
   const [welcomeScreen, setWelcomeScreen] = useState(true);
-  const [theme, setTheme] = useState<string>('dark');
+  const [theme, setTheme] = useState<string>('monochrome');
   const [tracks, setTracks, undoTracks, redoTracks, canUndo, canRedo] = useUndoRedo<Track[]>([]);
   
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
@@ -153,9 +157,8 @@ export default function App() {
   };
 
   const toggleTheme = () => {
-    const keys = Object.keys(THEMES);
-    const currentIndex = keys.indexOf(theme);
-    setTheme(keys[(currentIndex + 1) % keys.length]);
+    // Single theme now
+    setTheme('monochrome');
   };
 
   // --- Real-time Mixing ---
@@ -233,7 +236,7 @@ export default function App() {
   };
 
   const addNewTrack = () => {
-      setTracks(prev => [...prev, { id: crypto.randomUUID(), name: `Faixa ${tracks.length + 1}`, type: TrackType.VOCAL, volume: 0.8, pan: 0, muted: false, solo: false, clips: [], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] }]);
+      setTracks(prev => [...prev, { id: crypto.randomUUID(), name: `Track ${tracks.length + 1}`, type: TrackType.VOCAL, volume: 0.8, pan: 0, muted: false, solo: false, clips: [], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] }]);
       if (isMobile) setIsTrackListOpen(false);
   };
 
@@ -244,7 +247,7 @@ export default function App() {
   };
   const editTrackName = (id: string) => {
       const track = tracks.find(t => t.id === id); if (!track) return;
-      const newName = prompt("Nome da Faixa:", track.name); if (newName) updateTrack(id, { name: newName });
+      const newName = prompt("Track Name:", track.name); if (newName) updateTrack(id, { name: newName });
   };
 
   const splitTrack = () => {
@@ -265,29 +268,23 @@ export default function App() {
       setSelectedClipId(null);
   };
 
-  // --- RECORDING LOGIC (With Fix) ---
+  // --- RECORDING LOGIC ---
   const toggleRecord = async () => {
     audioEngine.resumeContext();
     if (audioState.isRecording) {
-      // 1. Stop recording and get the raw Blob
       const blob = await audioEngine.stopRecording();
-      
-      // Safety Check
       if (blob.size === 0) {
         setAudioState(prev => ({ ...prev, isRecording: false }));
         return;
       }
-
-      // 2. [CRITICAL FIX] Convert Blob to AudioBuffer using helper
       try {
         const audioBuffer = await audioEngine.processRecordedBlob(blob);
-        
         if (recordingClipIdRef.current && recordingTrackIdRef.current) {
             const newClip: Clip = { 
                 id: recordingClipIdRef.current, 
                 name: "Rec Take", 
                 blob, 
-                buffer: audioBuffer, // Assigned the decoded buffer here
+                buffer: audioBuffer,
                 duration: audioBuffer.duration, 
                 audioOffset: 0, 
                 startTime: recordingStartTimeRef.current 
@@ -297,35 +294,25 @@ export default function App() {
       } catch (error) {
           console.error("Failed to process recording:", error);
       }
-
-      // Cleanup
       recordingClipIdRef.current = null; recordingTrackIdRef.current = null; recordingWaveformRef.current = [];
       setAudioState(prev => ({ ...prev, isRecording: false }));
 
     } else {
       try {
-        // Start recording with monitoring enabled (true)
-        await audioEngine.startRecording(true); 
-        
+        await audioEngine.startRecording(); 
         recordingStartTimeRef.current = audioState.currentTime; 
         recordingWaveformRef.current = [];
-        
         let recTrackId = selectedTrackId;
         if (!tracks.find(t => t.id === selectedTrackId)?.type.includes('VOCAL')) {
             const newTrack: Track = { id: crypto.randomUUID(), name: `Vocal Rec`, type: TrackType.VOCAL, volume: 1.0, pan: 0, muted: false, solo: false, clips: [], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] };
             setTracks(prev => [...prev, newTrack]); recTrackId = newTrack.id; setSelectedTrackId(newTrack.id);
         }
         recordingTrackIdRef.current = recTrackId;
-        
         const tempClipId = crypto.randomUUID(); 
         recordingClipIdRef.current = tempClipId;
-        
-        // Create placeholder clip for visualization
         setTimeout(() => setTracks(prev => prev.map(t => t.id === recTrackId ? { ...t, clips: [...t.clips, { id: tempClipId, name: "Recording...", duration: 0, audioOffset: 0, startTime: recordingStartTimeRef.current, liveData: [] }] } : t)), 0);
-        
         setAudioState(prev => ({ ...prev, isRecording: true })); 
         if (!audioState.isPlaying) togglePlay();
-
       } catch (err) { alert("Microphone error or permission denied."); }
     }
   };
@@ -531,15 +518,6 @@ export default function App() {
 
   const selectedTrack = tracks.find(t => t.id === selectedTrackId);
 
-  // Wrapper functions to pass to Timeline for interaction
-  // NOTE: These assume Timeline component can accept these callbacks or refs.
-  const timelineHandlers = {
-    onScrubStart: () => { isScrubbingRef.current = true; wasPlayingRef.current = audioState.isPlaying; if(audioState.isPlaying) handleStop(); },
-    onLoopStartDrag: () => { isDraggingLoopStartRef.current = true; },
-    onLoopEndDrag: () => { isDraggingLoopEndRef.current = true; },
-    onLoopCreateStart: (time: number) => { isCreatingLoopRef.current = true; loopStartAnchorRef.current = time; }
-  };
-
   return (
     <div className="flex flex-col h-screen w-full bg-[var(--bg-main)] text-[var(--text-main)] font-sans selection:bg-[var(--accent)] selection:text-black overflow-hidden relative transition-colors duration-300" style={THEMES[theme] as React.CSSProperties} onContextMenu={(e) => e.preventDefault()}>
       
@@ -555,21 +533,21 @@ export default function App() {
 
       {/* Context Menu */}
       {contextMenu.visible && (
-          <div className="fixed z-[100] bg-[#1a1a1a] border border-[#333] rounded-lg shadow-xl py-1 min-w-[200px] animate-in fade-in zoom-in-95 duration-100 flex flex-col" style={{ top: contextMenu.y, left: contextMenu.x }}>
+          <div className="fixed z-[100] bg-[#111] border border-[#333] rounded-sm shadow-xl py-1 min-w-[200px] animate-in fade-in zoom-in-95 duration-100 flex flex-col" style={{ top: contextMenu.y, left: contextMenu.x }}>
               <div className="px-3 py-2 text-[10px] text-[#555] font-bold uppercase tracking-wider border-b border-[#333]">Clip Operations</div>
-              <button onClick={() => processClipBuffer('removesilence')} className="w-full text-left px-4 py-2 text-xs font-bold text-[#e6c200] hover:bg-[#e6c200]/10 flex items-center gap-2 group"><ScissorsLineDashed className="w-3 h-3" /> Remove Silence <span className="bg-[#e6c200] text-black text-[9px] px-1 rounded ml-auto">PRO</span></button>
-              <button onClick={() => processClipBuffer('neural')} className="w-full text-left px-4 py-2 text-xs font-bold text-[#e6c200] hover:bg-[#e6c200]/10 flex items-center gap-2 group"><Sparkles className="w-3 h-3" /> Neural Enhance <span className="bg-[#e6c200] text-black text-[9px] px-1 rounded ml-auto">PRO</span></button>
-              <button onClick={() => processClipBuffer('lofi')} className="w-full text-left px-4 py-2 text-xs font-bold text-[#e6c200] hover:bg-[#e6c200]/10 flex items-center gap-2 group"><Radio className="w-3 h-3" /> Lo-Fi Crusher <span className="bg-[#e6c200] text-black text-[9px] px-1 rounded ml-auto">PRO</span></button>
-              <button onClick={() => processClipBuffer('deesser')} className="w-full text-left px-4 py-2 text-xs font-bold text-[#e6c200] hover:bg-[#e6c200]/10 flex items-center gap-2 group"><Mic2 className="w-3 h-3" /> Vocal De-Esser <span className="bg-[#e6c200] text-black text-[9px] px-1 rounded ml-auto">PRO</span></button>
+              <button onClick={() => processClipBuffer('removesilence')} className="w-full text-left px-4 py-2 text-xs font-bold text-[var(--accent)] hover:bg-[var(--bg-element)] flex items-center gap-2 group"><ScissorsLineDashed className="w-3 h-3" /> Remove Silence <span className="bg-[var(--accent)] text-black text-[9px] px-1 rounded ml-auto">PRO</span></button>
+              <button onClick={() => processClipBuffer('neural')} className="w-full text-left px-4 py-2 text-xs font-bold text-[var(--accent)] hover:bg-[var(--bg-element)] flex items-center gap-2 group"><Sparkles className="w-3 h-3" /> Neural Enhance <span className="bg-[var(--accent)] text-black text-[9px] px-1 rounded ml-auto">PRO</span></button>
+              <button onClick={() => processClipBuffer('lofi')} className="w-full text-left px-4 py-2 text-xs font-bold text-[var(--accent)] hover:bg-[var(--bg-element)] flex items-center gap-2 group"><Radio className="w-3 h-3" /> Lo-Fi Crusher <span className="bg-[var(--accent)] text-black text-[9px] px-1 rounded ml-auto">PRO</span></button>
+              <button onClick={() => processClipBuffer('deesser')} className="w-full text-left px-4 py-2 text-xs font-bold text-[var(--accent)] hover:bg-[var(--bg-element)] flex items-center gap-2 group"><Mic2 className="w-3 h-3" /> Vocal De-Esser <span className="bg-[var(--accent)] text-black text-[9px] px-1 rounded ml-auto">PRO</span></button>
               <div className="h-[1px] bg-[#333] my-1"></div>
-              <button onClick={() => processClipBuffer('normalize')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2"><TrendingUp className="w-3 h-3" /> Normalize</button>
-              <button onClick={() => processClipBuffer('gain')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2"><Volume2 className="w-3 h-3" /> Gain +3dB</button>
-              <button onClick={() => processClipBuffer('silence')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2"><VolumeX className="w-3 h-3" /> Silence</button>
-              <button onClick={() => processClipBuffer('invert')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2"><ArrowLeftRight className="w-3 h-3 rotate-90" /> Invert Phase</button>
-              <button onClick={() => processClipBuffer('reverse')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2"><ArrowLeftRight className="w-3 h-3" /> Reverse</button>
+              <button onClick={() => processClipBuffer('normalize')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#222] flex items-center gap-2"><TrendingUp className="w-3 h-3" /> Normalize</button>
+              <button onClick={() => processClipBuffer('gain')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#222] flex items-center gap-2"><Volume2 className="w-3 h-3" /> Gain +3dB</button>
+              <button onClick={() => processClipBuffer('silence')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#222] flex items-center gap-2"><VolumeX className="w-3 h-3" /> Silence</button>
+              <button onClick={() => processClipBuffer('invert')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#222] flex items-center gap-2"><ArrowLeftRight className="w-3 h-3 rotate-90" /> Invert Phase</button>
+              <button onClick={() => processClipBuffer('reverse')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#222] flex items-center gap-2"><ArrowLeftRight className="w-3 h-3" /> Reverse</button>
               <div className="h-[1px] bg-[#333] my-1"></div>
-              <button onClick={() => processClipBuffer('fadein')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2">Fade In</button>
-              <button onClick={() => processClipBuffer('fadeout')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#333] flex items-center gap-2">Fade Out</button>
+              <button onClick={() => processClipBuffer('fadein')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#222] flex items-center gap-2">Fade In</button>
+              <button onClick={() => processClipBuffer('fadeout')} className="w-full text-left px-4 py-2 text-xs font-bold text-white hover:bg-[#222] flex items-center gap-2">Fade Out</button>
               <button onClick={deleteSelectedClip} className="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-900/20 flex items-center gap-2"><Trash2 className="w-3 h-3" /> Delete Clip</button>
           </div>
       )}
@@ -580,12 +558,12 @@ export default function App() {
 
       {welcomeScreen && (
           <div className="fixed inset-0 z-[100] bg-[var(--bg-main)] flex flex-col items-center justify-center animate-fade-in text-center p-4">
-             <div className="w-20 h-20 md:w-24 md:h-24 bg-[var(--accent)] rounded-full flex items-center justify-center mb-8 shadow-2xl animate-pulse"><Music className="w-10 h-10 md:w-12 md:h-12 text-black" /></div>
+             <div className="w-20 h-20 md:w-24 md:h-24 bg-[var(--text-main)] rounded-full flex items-center justify-center mb-8 shadow-2xl animate-pulse"><Music className="w-10 h-10 md:w-12 md:h-12 text-black" /></div>
              <h1 className="text-4xl md:text-6xl font-black tracking-tighter mb-4 text-[var(--text-main)]">MONOCHROME</h1>
              <p className="text-lg md:text-xl text-[var(--text-muted)] font-light tracking-widest mb-12 uppercase">Professional Web DAW</p>
              <div className="flex flex-col md:flex-row gap-4 w-full max-w-md">
-                 <button onClick={() => setWelcomeScreen(false)} className="flex-1 px-8 py-4 bg-[var(--text-main)] text-[var(--bg-main)] font-bold tracking-widest hover:bg-[var(--accent)] hover:text-black transition-colors shadow-2xl uppercase">Enter Studio</button>
-                 <label className="flex-1 px-8 py-4 border border-[var(--text-main)] text-[var(--text-main)] font-bold tracking-widest hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors shadow-2xl uppercase cursor-pointer flex items-center justify-center gap-2"><FolderOpen className="w-5 h-5" /> Load Project<input type="file" accept=".zip" className="hidden" onChange={handleLoadProject} /></label>
+                 <button onClick={() => setWelcomeScreen(false)} className="flex-1 px-8 py-4 bg-[var(--text-main)] text-[var(--bg-main)] font-bold tracking-widest hover:bg-[var(--text-muted)] hover:text-white transition-colors shadow-2xl uppercase">Enter Studio</button>
+                 <label className="flex-1 px-8 py-4 border border-[var(--text-main)] text-[var(--text-main)] font-bold tracking-widest hover:bg-[var(--text-main)] hover:text-black transition-colors shadow-2xl uppercase cursor-pointer flex items-center justify-center gap-2"><FolderOpen className="w-5 h-5" /> Load Project<input type="file" accept=".zip" className="hidden" onChange={handleLoadProject} /></label>
              </div>
           </div>
       )}
@@ -597,10 +575,10 @@ export default function App() {
                   <div className="flex items-center gap-4">
                       <button onClick={() => setOpenedEffect(null)} className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors uppercase text-xs font-bold tracking-widest border border-[var(--border-color)] px-3 py-1.5 rounded hover:border-[var(--text-muted)]"><ArrowLeft className="w-4 h-4" /> Back</button>
                       <div className="h-6 w-[1px] bg-[var(--border-color)]"></div>
-                      <div className="flex flex-col"><span className="text-lg font-bold text-[var(--text-main)] uppercase tracking-tight leading-none">{openedEffect.effectId}</span><span className="text-[10px] text-[var(--accent)] uppercase tracking-widest font-bold">{tracks.find(t => t.id === openedEffect.trackId)?.name}</span></div>
+                      <div className="flex flex-col"><span className="text-lg font-bold text-[var(--text-main)] uppercase tracking-tight leading-none">{openedEffect.effectId}</span><span className="text-[10px] text-[var(--text-muted)] uppercase tracking-widest font-bold">{tracks.find(t => t.id === openedEffect.trackId)?.name}</span></div>
                   </div>
               </div>
-              <div className="flex-1 overflow-auto md:overflow-hidden relative p-4">
+              <div className="flex-1 overflow-auto md:overflow-hidden relative p-4 bg-black">
                   {(() => {
                       const track = tracks.find(t => t.id === openedEffect.trackId)!; const fx = openedEffect.effectId; const plugin = EffectRegistry.get(fx);
                       if (plugin) { const PluginComponent = plugin.component; return <PluginComponent trackId={track.id} settings={track.effects[fx] || plugin.defaultSettings} onChange={(newSettings) => updateEffects(track.id, { [fx]: newSettings })} />; }
@@ -609,7 +587,7 @@ export default function App() {
                       if (fx === 'reverb') return <ReverbEffect trackId={track.id} settings={track.effects.reverb} onChange={(newSettings) => updateEffects(track.id, { reverb: newSettings })} />;
                       if (fx === 'autoPitch') return <TunerEffect trackId={track.id} settings={track.effects.autoPitch} onChange={(newSettings) => updateEffects(track.id, { autoPitch: newSettings })} />;
                       if (fx === 'distortion') return <div className="w-full h-full flex items-center justify-center bg-black"><DistortionEffect value={track.effects.distortion} onChange={(v) => updateEffects(track.id, { distortion: v })} /></div>;
-                      if (fx === 'delay') return <div className="w-full h-full flex flex-col items-center justify-center bg-black gap-8 border border-zinc-800 m-8 rounded-xl"><h2 className="text-2xl text-zinc-500 tracking-widest font-bold">DIGITAL DELAY</h2><div className="flex gap-12"><Knob value={track.effects.delay.time} min={0} max={1} onChange={(v) => updateEffects(track.id, { delay: { ...track.effects.delay, time: v } })} label="TIME" /><Knob value={track.effects.delay.feedback} min={0} max={0.9} onChange={(v) => updateEffects(track.id, { delay: { ...track.effects.delay, feedback: v } })} label="FEEDBACK" /><Knob value={track.effects.delay.mix} min={0} max={1} onChange={(v) => updateEffects(track.id, { delay: { ...track.effects.delay, mix: v } })} label="MIX" /></div></div>;
+                      if (fx === 'delay') return <div className="w-full h-full flex flex-col items-center justify-center bg-black gap-8 border border-zinc-800 m-8 rounded-sm"><h2 className="text-2xl text-zinc-500 tracking-widest font-bold">DIGITAL DELAY</h2><div className="flex gap-12"><Knob value={track.effects.delay.time} min={0} max={1} onChange={(v) => updateEffects(track.id, { delay: { ...track.effects.delay, time: v } })} label="TIME" /><Knob value={track.effects.delay.feedback} min={0} max={0.9} onChange={(v) => updateEffects(track.id, { delay: { ...track.effects.delay, feedback: v } })} label="FEEDBACK" /><Knob value={track.effects.delay.mix} min={0} max={1} onChange={(v) => updateEffects(track.id, { delay: { ...track.effects.delay, mix: v } })} label="MIX" /></div></div>;
                       return <div className="w-full h-full flex items-center justify-center text-zinc-600">Effect GUI Not Available</div>;
                   })()}
               </div>
@@ -635,10 +613,9 @@ export default function App() {
         />
 
         {/* 3. Main Timeline */}
-        {/* Note: Ensure Timeline component accepts these Ref objects or booleans as needed */}
         <Timeline 
             tracks={tracks} audioState={audioState} setAudioState={setAudioState} zoomLevel={zoomLevel} pixelsPerSecond={pixelsPerSecond} handleZoom={handleZoom} scrollRef={scrollContainerRef} setScrollTop={setScrollTop}
-            activeTool={activeTool} setActiveTool={setActiveTool} toggleLoop={toggleLoop} selectedClipId={selectedClipId} deleteSelectedClip={deleteSelectedClip} splitTrack={splitTrack}
+            activeTool={activeTool} setActiveTool={setActiveTool} toggleLoop={toggleLoop} togglePlay={togglePlay} selectedClipId={selectedClipId} deleteSelectedClip={deleteSelectedClip} splitTrack={splitTrack}
             handleClipInteractionStart={handleClipInteractionStart} handleContextMenu={handleContextMenu}
             
             // Interaction State
@@ -650,13 +627,12 @@ export default function App() {
             currentScrubTime={currentScrubTimeRef.current} 
             wasPlayingRef={wasPlayingRef}
             
-            // Pass refs for interaction (Assuming Timeline supports these prop names or use the handlers object)
-            // If your Timeline.tsx is set up to write to these, pass the Refs. 
-            // If not, you may need to update Timeline.tsx to use these.
+            // Pass refs for interaction
             isDraggingLoopStartRef={isDraggingLoopStartRef}
             isDraggingLoopEndRef={isDraggingLoopEndRef}
             isCreatingLoopRef={isCreatingLoopRef}
             isScrubbingRef={isScrubbingRef}
+            loopStartAnchorRef={loopStartAnchorRef}
         />
 
         {/* 4. Mixer Sidebar */}

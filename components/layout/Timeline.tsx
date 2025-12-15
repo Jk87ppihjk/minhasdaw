@@ -1,8 +1,7 @@
-import React, { useMemo, useEffect, useRef } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { Layers, MousePointer2, Scissors, Magnet, Repeat, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { Track, AudioEngineState } from '../../types';
 import { Waveform } from '../Waveform';
-import { audioEngine } from '../../services/AudioEngine';
 
 interface TimelineProps {
   tracks: Track[];
@@ -20,6 +19,7 @@ interface TimelineProps {
   activeTool: 'cursor' | 'split';
   setActiveTool: (t: 'cursor' | 'split') => void;
   toggleLoop: () => void;
+  togglePlay: () => void;
   
   // Selection
   selectedClipId: string | null;
@@ -40,13 +40,19 @@ interface TimelineProps {
   
   // Refs
   wasPlayingRef: React.MutableRefObject<boolean>;
+  isCreatingLoopRef: React.MutableRefObject<boolean>;
+  isDraggingLoopStartRef: React.MutableRefObject<boolean>;
+  isDraggingLoopEndRef: React.MutableRefObject<boolean>;
+  isScrubbingRef: React.MutableRefObject<boolean>;
+  loopStartAnchorRef: React.MutableRefObject<number>;
 }
 
 export const Timeline: React.FC<TimelineProps> = ({
   tracks, audioState, setAudioState, zoomLevel, pixelsPerSecond, handleZoom, scrollRef, setScrollTop,
-  activeTool, setActiveTool, toggleLoop, selectedClipId, deleteSelectedClip, splitTrack,
+  activeTool, setActiveTool, toggleLoop, togglePlay, selectedClipId, deleteSelectedClip, splitTrack,
   handleClipInteractionStart, handleContextMenu,
-  isCreatingLoop, loopStartAnchor, isDraggingLoopStart, isDraggingLoopEnd, isScrubbing, currentScrubTime, wasPlayingRef
+  isCreatingLoop, loopStartAnchor, isDraggingLoopStart, isDraggingLoopEnd, isScrubbing, currentScrubTime, 
+  wasPlayingRef, isCreatingLoopRef, isDraggingLoopStartRef, isDraggingLoopEndRef, isScrubbingRef, loopStartAnchorRef
 }) => {
 
   // --- Zoom with Ctrl + Scroll & Horizontal Scroll with Shift + Scroll ---
@@ -166,20 +172,38 @@ export const Timeline: React.FC<TimelineProps> = ({
                             const t = x / pixelsPerSecond;
                             
                             if(e.shiftKey) { 
-                                // Logic for Loop Creation is passed down via props implicitly or handled in App
-                            } 
+                                isCreatingLoopRef.current = true;
+                                loopStartAnchorRef.current = t;
+                            } else {
+                                isScrubbingRef.current = true;
+                                if (audioState.isPlaying) {
+                                    wasPlayingRef.current = true;
+                                    togglePlay(); 
+                                } else {
+                                    wasPlayingRef.current = false;
+                                }
+                                setAudioState(prev => ({ ...prev, currentTime: t }));
+                            }
                         }}
                     >
                         {Ruler}
                         {audioState.loop.active && (
                             <>
                                 <div className="absolute top-0 h-full bg-[var(--accent)]/10 border-t-2 border-[var(--accent)] pointer-events-none" style={{ left: audioState.loop.start * pixelsPerSecond, width: (audioState.loop.end - audioState.loop.start) * pixelsPerSecond }} />
-                                {/* Handles are visual, interaction handled by App's global listeners based on class */}
-                                <div className="absolute top-0 h-6 w-4 -ml-2 cursor-ew-resize z-50 group loop-handle touch-none" style={{ left: audioState.loop.start * pixelsPerSecond }}>
-                                    <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-[var(--accent)] pointer-events-none"></div>
+                                {/* Loop Handles */}
+                                <div 
+                                    className="absolute top-0 h-6 w-4 -ml-2 cursor-ew-resize z-50 group loop-handle touch-none flex items-center justify-center" 
+                                    style={{ left: audioState.loop.start * pixelsPerSecond }}
+                                    onMouseDown={(e) => { e.stopPropagation(); isDraggingLoopStartRef.current = true; }}
+                                >
+                                    <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-[var(--accent)] pointer-events-none drop-shadow-sm"></div>
                                 </div>
-                                <div className="absolute top-0 h-6 w-4 -ml-2 cursor-ew-resize z-50 group loop-handle touch-none" style={{ left: audioState.loop.end * pixelsPerSecond }}>
-                                    <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-[var(--accent)] pointer-events-none"></div>
+                                <div 
+                                    className="absolute top-0 h-6 w-4 -ml-2 cursor-ew-resize z-50 group loop-handle touch-none flex items-center justify-center" 
+                                    style={{ left: audioState.loop.end * pixelsPerSecond }}
+                                    onMouseDown={(e) => { e.stopPropagation(); isDraggingLoopEndRef.current = true; }}
+                                >
+                                    <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-[var(--accent)] pointer-events-none drop-shadow-sm"></div>
                                 </div>
                             </>
                         )}

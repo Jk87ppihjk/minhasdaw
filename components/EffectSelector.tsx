@@ -29,8 +29,8 @@ const EFFECT_LIBRARY: EffectMeta[] = [
   { id: 'pocketGate', name: 'Pocket Gate', category: 'MOBILE POCKET', description: 'Remove background noise.', icon: Filter },
 
   // Plugins do Registro Dinâmico
-  { id: 'filterDesert', name: 'Filter Desert', category: 'EQ & FILTER', description: 'XY Pad Filter with Resonance control.', icon: Filter },
-  { id: 'tremoloDesert', name: 'Tremolo Desert', category: 'MODULATION', description: 'LFO based volume modulation.', icon: Waves },
+  { id: 'filterDesert', name: 'Filter Studio', category: 'EQ & FILTER', description: 'XY Pad Filter with Resonance control.', icon: Filter },
+  { id: 'tremoloDesert', name: 'Tremolo Studio', category: 'MODULATION', description: 'LFO based volume modulation.', icon: Waves },
   
   // Efeitos Legacy
   { id: 'parametricEQ', name: 'Parametric EQ', category: 'EQ & FILTER', description: '5-Band precision equalizer.', icon: Activity },
@@ -70,8 +70,8 @@ export const EffectSelector: React.FC<EffectSelectorProps> = ({ onSelect, onClos
         {/* Header */}
         <div className="h-16 border-b border-zinc-800 flex items-center justify-between px-4 md:px-6 bg-[#050505] shrink-0">
             <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-desert-500/10 rounded flex items-center justify-center border border-desert-500/20">
-                    <Zap className="w-4 h-4 text-desert-500" />
+                <div className="w-8 h-8 bg-zinc-900 rounded flex items-center justify-center border border-zinc-800">
+                    <Zap className="w-4 h-4 text-white" />
                 </div>
                 <h2 className="text-lg font-bold text-white tracking-tight">EFFECTS RACK</h2>
             </div>
@@ -90,7 +90,7 @@ export const EffectSelector: React.FC<EffectSelectorProps> = ({ onSelect, onClos
                     placeholder="Search effects..." 
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="w-full bg-[#111] border border-zinc-800 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-desert-500 transition-colors"
+                    className="w-full bg-[#111] border border-zinc-800 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-white transition-colors"
                 />
             </div>
 
@@ -102,7 +102,7 @@ export const EffectSelector: React.FC<EffectSelectorProps> = ({ onSelect, onClos
                         onClick={() => setActiveCategory(cat)}
                         className={`px-3 py-1.5 rounded text-[10px] font-bold tracking-wider uppercase whitespace-nowrap transition-all border flex items-center gap-2 ${
                             activeCategory === cat 
-                            ? 'bg-desert-500 text-black border-desert-500' 
+                            ? 'bg-white text-black border-white' 
                             : 'bg-[#111] text-zinc-500 border-zinc-800 hover:border-zinc-600 hover:text-zinc-300'
                         }`}
                     >
@@ -120,18 +120,18 @@ export const EffectSelector: React.FC<EffectSelectorProps> = ({ onSelect, onClos
                     <button
                         key={fx.id}
                         onClick={() => onSelect(fx.id)}
-                        className="group flex flex-col items-start p-4 bg-[#0a0a0a] border border-zinc-800 rounded-xl hover:border-desert-500 hover:bg-[#0f0f0f] transition-all text-left relative overflow-hidden"
+                        className="group flex flex-col items-start p-4 bg-[#0a0a0a] border border-zinc-800 rounded-xl hover:border-white hover:bg-[#0f0f0f] transition-all text-left relative overflow-hidden"
                     >
                         <div className="absolute top-0 right-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <div className="w-2 h-2 rounded-full bg-desert-500 shadow-[0_0_10px_rgba(230,194,0,0.5)]"></div>
+                            <div className="w-2 h-2 rounded-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.5)]"></div>
                         </div>
                         
-                        <div className="mb-4 w-10 h-10 bg-zinc-900 rounded-lg flex items-center justify-center group-hover:bg-desert-500 group-hover:text-black transition-colors text-zinc-500 border border-zinc-800 group-hover:border-desert-500">
+                        <div className="mb-4 w-10 h-10 bg-zinc-900 rounded-lg flex items-center justify-center group-hover:bg-white group-hover:text-black transition-colors text-zinc-500 border border-zinc-800 group-hover:border-white">
                             <fx.icon className="w-5 h-5" />
                         </div>
                         
                         <h3 className="text-sm font-bold text-zinc-200 group-hover:text-white mb-1">{fx.name}</h3>
-                        <span className={`text-[9px] font-bold uppercase tracking-widest mb-2 border px-1.5 rounded ${fx.category === 'MOBILE POCKET' ? 'text-[#e6c200] border-[#e6c200]/50 bg-[#e6c200]/10' : 'text-zinc-500 border-zinc-800'}`}>{fx.category}</span>
+                        <span className={`text-[9px] font-bold uppercase tracking-widest mb-2 border px-1.5 rounded ${fx.category === 'MOBILE POCKET' ? 'text-zinc-400 border-zinc-800 bg-zinc-900' : 'text-zinc-500 border-zinc-800'}`}>{fx.category}</span>
                         <p className="text-[11px] text-zinc-500 leading-snug group-hover:text-zinc-400">
                             {fx.description}
                         </p>

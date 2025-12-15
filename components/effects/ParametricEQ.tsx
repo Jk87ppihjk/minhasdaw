@@ -117,7 +117,7 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
       ctx.strokeStyle = '#222';
       ctx.font = '10px monospace';
       ctx.textAlign = 'center';
-      ctx.fillStyle = '#666';
+      ctx.fillStyle = '#444';
 
       const freqs = [60, 200, 1000, 5000, 10000];
       const labels = ["60", "200", "1k", "5k", "10k"];
@@ -136,7 +136,7 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
       dBs.forEach(db => {
           const y = getYFromdB(db, h);
           ctx.beginPath();
-          ctx.strokeStyle = db === 0 ? '#555' : '#222';
+          ctx.strokeStyle = db === 0 ? '#444' : '#222';
           ctx.moveTo(0, y + 0.5);
           ctx.lineTo(w, y + 0.5);
           ctx.stroke();
@@ -158,9 +158,9 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
            ctx.lineTo(x, y);
         }
         ctx.lineTo(w, h);
-        ctx.fillStyle = "rgba(255, 255, 255, 0.25)"; 
+        ctx.fillStyle = "rgba(255, 255, 255, 0.1)"; 
         ctx.fill();
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.5)"; 
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.3)"; 
         ctx.lineWidth = 1;
         ctx.stroke();
       }
@@ -255,17 +255,14 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
       }
       
       ctx.lineWidth = 2.5; 
-      ctx.strokeStyle = isAuditioning ? "#ffffff" : "#e6c200"; // Branco para modo Solo
+      ctx.strokeStyle = "#ffffff";
       ctx.lineJoin = 'round';
-      ctx.shadowColor = isAuditioning ? "rgba(255, 255, 255, 0.5)" : "rgba(230, 194, 0, 0.5)";
-      ctx.shadowBlur = 15;
       ctx.stroke();
-      ctx.shadowBlur = 0;
 
       // Preenchimento Suave Abaixo da Curva
       ctx.lineTo(w, h);
       ctx.lineTo(0, h);
-      ctx.fillStyle = isAuditioning ? "rgba(255, 255, 255, 0.05)" : "rgba(230, 194, 0, 0.05)";
+      ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
       ctx.fill();
 
       // 5. Nós (Handles)
@@ -280,7 +277,7 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
                ctx.beginPath();
                ctx.moveTo(x, y);
                ctx.lineTo(x, yZero);
-               ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+               ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
                ctx.lineWidth = 1;
                ctx.setLineDash([3, 3]);
                ctx.stroke();
@@ -290,20 +287,20 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
            if (isSelected) {
                ctx.beginPath();
                ctx.arc(x, y, 12, 0, Math.PI * 2);
-               ctx.fillStyle = "rgba(230, 194, 0, 0.2)";
+               ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
                ctx.fill();
            }
 
            ctx.beginPath();
            ctx.arc(x, y, isSelected ? 6 : 5, 0, Math.PI * 2);
-           ctx.fillStyle = isSelected ? "#e6c200" : (isHover ? "#fff" : "#888");
+           ctx.fillStyle = isSelected ? "#ffffff" : (isHover ? "#ccc" : "#666");
            ctx.strokeStyle = "#000";
            ctx.lineWidth = 2;
            ctx.fill();
            ctx.stroke();
            
            if (isSelected || isHover) {
-              ctx.fillStyle = isSelected ? "#e6c200" : "#aaa";
+              ctx.fillStyle = isSelected ? "#fff" : "#aaa";
               ctx.font = "bold 10px sans-serif";
               ctx.fillText((i+1).toString(), x, y - 12);
            }
@@ -424,10 +421,10 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
   return (
     <div className="flex flex-col w-full h-full bg-black text-[#f0f0f0] font-sans select-none border border-[#333]">
       <style>{`
-        .desert-slider { -webkit-appearance: none; width: 100%; height: 4px; background: #333; border-radius: 2px; outline: none; }
-        .desert-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #e6c200; border-radius: 50%; border: 2px solid #000; cursor: pointer; }
-        .desert-select { background: #000; color: #e6c200; border: 1px solid #444; padding: 4px; font-size: 11px; outline: none; }
-        .desert-select option { background: #111; color: #fff; }
+        .studio-slider { -webkit-appearance: none; width: 100%; height: 2px; background: #333; border-radius: 0px; outline: none; }
+        .studio-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #fff; border-radius: 50%; border: 2px solid #000; cursor: pointer; }
+        .studio-select { background: #000; color: #fff; border: 1px solid #444; padding: 4px; font-size: 11px; outline: none; }
+        .studio-select option { background: #111; color: #fff; }
       `}</style>
       
       {/* Visualizer Area */}
@@ -441,7 +438,7 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
             onMouseLeave={(e) => handleInteraction('up', e)}
         />
         {tooltip && (
-            <div className="absolute bg-black/90 border border-[#e6c200] text-[#e6c200] text-[10px] font-mono px-2 py-1 pointer-events-none transform -translate-y-full -translate-x-1/2 rounded shadow-lg z-50 whitespace-nowrap"
+            <div className="absolute bg-black/90 border border-white text-white text-[10px] font-mono px-2 py-1 pointer-events-none transform -translate-y-full -translate-x-1/2 rounded shadow-lg z-50 whitespace-nowrap"
                  style={{ left: tooltip.x, top: tooltip.y - 15 }}>
                 {tooltip.text}
             </div>
@@ -454,15 +451,15 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
       </div>
 
       {/* Controls Panel */}
-      <div className="bg-[#0a0a0a] p-3 border-t border-[#333] h-[140px] grid grid-cols-1 md:grid-cols-3 gap-6 shrink-0 relative z-10">
+      <div className="bg-[#050505] p-3 border-t border-[#333] h-[140px] grid grid-cols-1 md:grid-cols-3 gap-6 shrink-0 relative z-10">
          
          {/* Coluna 1: Edição da Banda */}
          <div className="col-span-2 flex flex-col gap-2">
             {selectedBand ? (
                 <>
                     <div className="flex justify-between items-center border-b border-[#222] pb-1">
-                        <span className="text-[#e6c200] font-bold text-xs uppercase tracking-wider flex items-center gap-2">
-                            <div className="w-2 h-2 bg-[#e6c200] rounded-full"></div>
+                        <span className="text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2">
+                            <div className="w-2 h-2 bg-white rounded-full"></div>
                             Band {selectedBandIndex + 1}
                         </span>
                         <button 
@@ -471,7 +468,7 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
                                onChange({ ...settings, bands: newBands });
                                setSelectedBandIndex(-1);
                            }}
-                           className="text-[#f55] text-[9px] hover:text-red-400 font-bold uppercase tracking-widest hover:underline"
+                           className="text-[#666] text-[9px] hover:text-red-500 font-bold uppercase tracking-widest hover:underline"
                         >
                             DELETE
                         </button>
@@ -482,7 +479,7 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
                         <div className="flex flex-col gap-1">
                             <label className="text-[9px] text-[#666] uppercase font-bold">TYPE</label>
                             <select 
-                                className="desert-select w-full"
+                                className="studio-select w-full"
                                 value={selectedBand.type}
                                 onChange={(e) => {
                                     const newBands = [...settings.bands];
@@ -502,7 +499,7 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
                         {/* Freq Display (Read only) */}
                         <div className="flex flex-col gap-1">
                              <label className="text-[9px] text-[#666] uppercase font-bold">FREQ</label>
-                             <div className="text-[#e6c200] text-xs font-mono border border-[#333] px-2 py-1 bg-black rounded">
+                             <div className="text-white text-xs font-mono border border-[#333] px-2 py-1 bg-black rounded">
                                 {Math.round(selectedBand.freq)} Hz
                              </div>
                         </div>
@@ -520,14 +517,14 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
                                     onMouseDown={() => toggleAudition(true)}
                                     onMouseUp={() => toggleAudition(false)}
                                     onMouseLeave={() => toggleAudition(false)}
-                                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border transition-colors select-none ${settings.auditionBandIndex === selectedBandIndex ? 'bg-[#e6c200] text-black border-[#e6c200] shadow-[0_0_10px_rgba(230,194,0,0.5)]' : 'bg-[#111] text-[#888] border-[#333] hover:border-[#666] hover:text-white'}`}
+                                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border transition-colors select-none ${settings.auditionBandIndex === selectedBandIndex ? 'bg-white text-black border-white' : 'bg-[#111] text-[#888] border-[#333] hover:border-[#666] hover:text-white'}`}
                                 >
                                     <Headphones className="w-3 h-3" />
                                     LISTEN
                                 </button>
                             </div>
                             <input 
-                                type="range" className="desert-slider" min="0.1" max="10" step="0.1"
+                                type="range" className="studio-slider" min="0.1" max="10" step="0.1"
                                 value={selectedBand.q}
                                 onChange={(e) => {
                                     const newBands = [...settings.bands];
@@ -552,10 +549,10 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
              <div className="flex flex-col gap-1">
                  <div className="flex justify-between items-center">
                     <label className="text-[9px] text-[#666] uppercase font-bold tracking-wider">OUTPUT GAIN</label>
-                    <span className="text-[9px] text-[#e6c200] font-mono">{settings.preamp > 0 ? '+' : ''}{settings.preamp}dB</span>
+                    <span className="text-[9px] text-white font-mono">{settings.preamp > 0 ? '+' : ''}{settings.preamp}dB</span>
                  </div>
                  <input 
-                    type="range" className="desert-slider" min="-12" max="12" step="0.1"
+                    type="range" className="studio-slider" min="-12" max="12" step="0.1"
                     value={settings.preamp}
                     onChange={(e) => onChange({...settings, preamp: parseFloat(e.target.value)})}
                  />
@@ -565,10 +562,10 @@ export const ParametricEQ: React.FC<ParametricEQProps> = ({ trackId, settings, o
              <div className="flex flex-col gap-1">
                  <div className="flex justify-between items-center">
                     <label className="text-[9px] text-[#666] uppercase font-bold tracking-wider">REVERB</label>
-                    <span className="text-[9px] text-[#e6c200] font-mono">{settings.reverb}%</span>
+                    <span className="text-[9px] text-white font-mono">{settings.reverb}%</span>
                  </div>
                  <input 
-                    type="range" className="desert-slider" min="0" max="100" step="1"
+                    type="range" className="studio-slider" min="0" max="100" step="1"
                     value={settings.reverb}
                     onChange={(e) => onChange({...settings, reverb: parseInt(e.target.value)})}
                  />

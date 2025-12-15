@@ -120,12 +120,12 @@ const FilterComponent: React.FC<{ trackId: string, settings: FilterSettings, onC
           ctx.lineWidth = 1; ctx.strokeStyle = "#333";
           ctx.beginPath(); ctx.moveTo(w/2, 0); ctx.lineTo(w/2, h); ctx.stroke();
 
-          ctx.beginPath(); ctx.strokeStyle = "rgba(230, 194, 0, 0.3)";
+          ctx.beginPath(); ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
           ctx.moveTo(cx, 0); ctx.lineTo(cx, h); ctx.moveTo(0, cy); ctx.lineTo(w, cy); ctx.stroke();
 
           ctx.beginPath(); ctx.arc(cx, cy, 8 + (settings.y * 10), 0, Math.PI * 2);
-          ctx.fillStyle = isActive ? "#e6c200" : "#444";
-          ctx.shadowBlur = isActive ? 15 : 0; ctx.shadowColor = "#e6c200";
+          ctx.fillStyle = isActive ? "#ffffff" : "#444";
+          ctx.shadowBlur = isActive ? 15 : 0; ctx.shadowColor = "#ffffff";
           ctx.fill(); ctx.shadowBlur = 0;
 
           if (analyser) {
@@ -138,8 +138,8 @@ const FilterComponent: React.FC<{ trackId: string, settings: FilterSettings, onC
                   if (i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
               }
               ctx.lineTo(w, h); ctx.lineTo(0, h);
-              ctx.lineWidth = 2; ctx.strokeStyle = isActive ? "#e6c200" : "#555";
-              ctx.stroke(); ctx.fillStyle = isActive ? "rgba(230, 194, 0, 0.1)" : "rgba(80, 80, 80, 0.1)";
+              ctx.lineWidth = 2; ctx.strokeStyle = isActive ? "#ffffff" : "#555";
+              ctx.stroke(); ctx.fillStyle = isActive ? "rgba(255, 255, 255, 0.1)" : "rgba(80, 80, 80, 0.1)";
               ctx.fill();
           }
           rafId = requestAnimationFrame(loop);
@@ -173,21 +173,21 @@ const FilterComponent: React.FC<{ trackId: string, settings: FilterSettings, onC
           <canvas ref={canvasRef} className="block w-full h-full" />
           <div className="absolute top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] text-xs text-[#333] font-bold pointer-events-none text-center">DRAG TO FILTER<br/>↔ FREQ | ↕ RES</div>
       </div>
-      <div className="bg-[#111] p-4 border-t-2 border-[#e6c200] shrink-0 flex flex-col gap-4 h-[160px]">
+      <div className="bg-[#0a0a0a] p-4 border-t border-[#333] shrink-0 flex flex-col gap-4 h-[160px]">
           <div className="flex justify-between items-end border-b border-[#333] pb-2">
-              <div className="flex flex-col"><span className="text-[9px] text-[#888] font-bold uppercase">CUTOFF FREQ</span><span className="text-xl text-[#e6c200] font-bold text-shadow">{uiState.freq}</span></div>
-              <div className={`px-3 py-1 rounded-full text-[10px] font-bold border ${uiState.type !== 'CLEAN' ? 'bg-[#e6c200] text-black border-[#e6c200]' : 'bg-black text-[#555] border-[#333]'}`}>{uiState.type}</div>
-              <div className="flex flex-col text-right"><span className="text-[9px] text-[#888] font-bold uppercase">RESONANCE</span><span className="text-xl text-[#e6c200] font-bold text-shadow">{uiState.res}</span></div>
+              <div className="flex flex-col"><span className="text-[9px] text-[#888] font-bold uppercase">CUTOFF FREQ</span><span className="text-xl text-white font-bold text-shadow">{uiState.freq}</span></div>
+              <div className={`px-3 py-1 rounded-full text-[10px] font-bold border ${uiState.type !== 'CLEAN' ? 'bg-white text-black border-white' : 'bg-black text-[#555] border-[#333]'}`}>{uiState.type}</div>
+              <div className="flex flex-col text-right"><span className="text-[9px] text-[#888] font-bold uppercase">RESONANCE</span><span className="text-xl text-white font-bold text-shadow">{uiState.res}</span></div>
           </div>
           <div className="flex flex-col gap-1">
               <div ref={stripRef} className="relative h-10 bg-[#1a1a1a] border border-[#333] rounded overflow-hidden cursor-ew-resize touch-none"
                 onMouseDown={(e) => { handleStrip(e.clientX); const move = (ev: MouseEvent) => handleStrip(ev.clientX); window.addEventListener('mousemove', move); window.addEventListener('mouseup', () => window.removeEventListener('mousemove', move), {once:true}); }}
               >
-                  <div className="absolute top-0 bottom-0 bg-[#e6c200] opacity-30 pointer-events-none" style={{ left: settings.x < 0.5 ? `${settings.x * 100}%` : '50%', width: settings.x < 0.5 ? `${(0.5 - settings.x) * 100}%` : `${(settings.x - 0.5) * 100}%`, display: (settings.x > 0.45 && settings.x < 0.55) ? 'none' : 'block' }} />
+                  <div className="absolute top-0 bottom-0 bg-white opacity-30 pointer-events-none" style={{ left: settings.x < 0.5 ? `${settings.x * 100}%` : '50%', width: settings.x < 0.5 ? `${(0.5 - settings.x) * 100}%` : `${(settings.x - 0.5) * 100}%`, display: (settings.x > 0.45 && settings.x < 0.55) ? 'none' : 'block' }} />
                   <div className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_10px_white] pointer-events-none" style={{ left: `${settings.x * 100}%` }} />
               </div>
           </div>
-          <button onClick={() => onChange({ ...settings, active: !settings.active })} className={`w-full text-[10px] font-bold py-1 uppercase tracking-widest ${settings.active ? 'text-[#e6c200] hover:text-white' : 'text-[#555]'}`}>{settings.active ? "FILTER ACTIVE" : "BYPASS"}</button>
+          <button onClick={() => onChange({ ...settings, active: !settings.active })} className={`w-full text-[10px] font-bold py-1 uppercase tracking-widest ${settings.active ? 'text-white hover:text-white' : 'text-[#555]'}`}>{settings.active ? "FILTER ACTIVE" : "BYPASS"}</button>
       </div>
     </div>
   );
@@ -196,7 +196,7 @@ const FilterComponent: React.FC<{ trackId: string, settings: FilterSettings, onC
 // 4. Exportação do Plugin
 export const FilterDesertPlugin: EffectPlugin<FilterSettings> = {
   id: 'filterDesert',
-  name: 'Filter Desert',
+  name: 'Filter Studio',
   defaultSettings: { x: 0.5, y: 0.0, active: true },
   initialize: initializeAudio,
   update: updateAudio,

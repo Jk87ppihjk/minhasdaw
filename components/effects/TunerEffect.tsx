@@ -85,7 +85,7 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
         ctx.beginPath();
         ctx.moveTo(0, centerY);
         ctx.lineTo(w, centerY);
-        ctx.strokeStyle = "#444"; 
+        ctx.strokeStyle = "#333"; 
         ctx.lineWidth = 2;
         ctx.stroke();
 
@@ -97,7 +97,7 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
             ctx.beginPath();
             ctx.moveTo(w/2, y);
             ctx.lineTo(w/2, centerY);
-            ctx.strokeStyle = "rgba(230, 194, 0, 0.5)";
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
             ctx.lineWidth = 2;
             ctx.setLineDash([4, 4]);
             ctx.stroke();
@@ -106,7 +106,7 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
             // Ball
             ctx.beginPath();
             ctx.arc(w/2, y, 12, 0, Math.PI * 2);
-            ctx.fillStyle = Math.abs(diff) < 0.02 ? "#00ff00" : "#e6c200";
+            ctx.fillStyle = Math.abs(diff) < 0.02 ? "#ffffff" : "#777";
             ctx.shadowBlur = 20;
             ctx.shadowColor = ctx.fillStyle;
             ctx.fill();
@@ -115,7 +115,7 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
             // Inner Core
             ctx.beginPath();
             ctx.arc(w/2, y, 4, 0, Math.PI * 2);
-            ctx.fillStyle = "#fff";
+            ctx.fillStyle = "#000";
             ctx.fill();
         }
       }
@@ -128,28 +128,26 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
   }, [trackId]);
 
   const customStyles = `
-    .desert-slider {
+    .studio-slider {
       -webkit-appearance: none;
       width: 100%;
-      height: 6px;
+      height: 4px;
       background: #222;
       border-radius: 3px;
       outline: none;
-      box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
     }
-    .desert-slider::-webkit-slider-thumb {
+    .studio-slider::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 20px;
-      height: 20px;
+      width: 16px;
+      height: 16px;
       border-radius: 50%;
-      background: linear-gradient(180deg, #e6c200, #b39700);
+      background: #fff;
       cursor: pointer;
       border: 2px solid #000;
-      box-shadow: 0 0 10px rgba(230, 194, 0, 0.4);
     }
-    .desert-select {
+    .studio-select {
         background-color: #0a0a0a;
-        color: #e6c200;
+        color: #fff;
         border: 1px solid #333;
         padding: 6px 10px;
         font-family: 'Inter', sans-serif;
@@ -157,10 +155,9 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
         font-weight: 600;
         outline: none;
         border-radius: 4px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
-    .desert-select:focus {
-        border-color: #e6c200;
+    .studio-select:focus {
+        border-color: #fff;
     }
   `;
 
@@ -171,10 +168,10 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
       {/* --- HEADER --- */}
       <div className="flex justify-between items-center px-6 py-3 bg-[#0a0a0a] border-b border-[#222] shrink-0 shadow-lg">
          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${displayInfo.hz !== 'Silence' ? 'bg-[#e6c200] animate-pulse' : 'bg-[#333]'}`}></div>
-            <h1 className="text-white text-sm tracking-widest font-black uppercase">Auto-Pitch <span className="text-[#e6c200]">PRO</span></h1>
+            <div className={`w-2 h-2 rounded-full ${displayInfo.hz !== 'Silence' ? 'bg-white animate-pulse' : 'bg-[#333]'}`}></div>
+            <h1 className="text-white text-sm tracking-widest font-black uppercase">Auto-Pitch <span className="text-zinc-500">PRO</span></h1>
          </div>
-         <div className={`text-[10px] px-3 py-1 rounded-full border font-bold tracking-wider ${displayInfo.hz !== 'Silence' ? 'bg-[#e6c200]/10 text-[#e6c200] border-[#e6c200]/30' : 'bg-[#1a1a1a] text-[#555] border-[#333]'}`}>
+         <div className={`text-[10px] px-3 py-1 rounded-full border font-bold tracking-wider ${displayInfo.hz !== 'Silence' ? 'bg-white/10 text-white border-white/30' : 'bg-[#1a1a1a] text-[#555] border-[#333]'}`}>
             {displayInfo.hz !== 'Silence' ? 'SIGNAL DETECTED' : 'NO SIGNAL'}
          </div>
       </div>
@@ -184,19 +181,19 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
         <canvas ref={canvasRef} className="absolute inset-0 z-0" />
         
         {/* Info Overlay */}
-        <div className="z-10 text-7xl font-black text-[#e6c200] drop-shadow-[0_0_30px_rgba(230,194,0,0.4)] tracking-tighter">
+        <div className="z-10 text-7xl font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.4)] tracking-tighter">
             {displayInfo.note}
         </div>
         <div className="z-10 text-sm text-[#555] font-mono mt-2 bg-black/50 px-3 py-1 rounded backdrop-blur-sm border border-[#222]">
             {displayInfo.hz}
         </div>
-        <div className={`z-10 text-xs font-bold uppercase mt-4 tracking-[0.2em] px-4 py-1 rounded-full ${displayInfo.isSynced ? 'bg-green-900/20 text-[#00ff00] border border-green-900/50' : 'text-[#ff3333]'}`}>
+        <div className={`z-10 text-xs font-bold uppercase mt-4 tracking-[0.2em] px-4 py-1 rounded-full ${displayInfo.isSynced ? 'bg-white text-black' : 'text-[#777] border border-[#333]'}`}>
             {displayInfo.correction}
         </div>
       </div>
 
       {/* --- CONTROLS PANEL --- */}
-      <div className="bg-[#0a0a0a] p-6 border-t border-[#333] shrink-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-20">
+      <div className="bg-[#0a0a0a] p-6 border-t border-[#333] shrink-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 z-20">
         
         {/* Scale */}
         <div className="flex flex-col gap-2">
@@ -204,7 +201,7 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
             <select 
                 value={settings.scale} 
                 onChange={(e) => updateParam('scale', e.target.value)}
-                className="desert-select w-full"
+                className="studio-select w-full"
             >
                 {SCALES_LIST.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -214,13 +211,13 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
         <div className="flex flex-col gap-2">
             <div className="flex justify-between items-end">
                 <label className="text-[10px] text-[#666] font-bold uppercase tracking-widest">Retune Speed</label>
-                <span className="text-[10px] text-[#e6c200] font-bold bg-[#e6c200]/10 px-2 py-0.5 rounded">
+                <span className="text-[10px] text-white font-bold bg-[#333] px-2 py-0.5 rounded">
                     {settings.speed < 0.1 ? "FAST" : "NATURAL"}
                 </span>
             </div>
             <input 
                 type="range" 
-                className="desert-slider" 
+                className="studio-slider" 
                 min="0" max="0.5" step="0.01" 
                 value={settings.speed} 
                 onChange={(e) => updateParam('speed', parseFloat(e.target.value))} 
@@ -231,11 +228,11 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
         <div className="flex flex-col gap-2">
             <div className="flex justify-between items-end">
                 <label className="text-[10px] text-[#666] font-bold uppercase tracking-widest">Atmosphere</label>
-                <span className="text-[10px] text-[#e6c200] font-bold bg-[#e6c200]/10 px-2 py-0.5 rounded">{settings.reverb || 0}%</span>
+                <span className="text-[10px] text-white font-bold bg-[#333] px-2 py-0.5 rounded">{settings.reverb || 0}%</span>
             </div>
             <input 
                 type="range" 
-                className="desert-slider" 
+                className="studio-slider" 
                 min="0" max="100" step="1" 
                 value={settings.reverb || 0} 
                 onChange={(e) => updateParam('reverb', parseInt(e.target.value))} 
@@ -245,20 +242,20 @@ export const TunerEffect: React.FC<TunerEffectProps> = ({ trackId, settings, onC
         {/* Actions */}
         <div className="flex flex-col justify-between h-full gap-2">
             <div 
-                className={`flex items-center gap-3 cursor-pointer p-2 rounded border transition-all ${settings.harmony ? 'bg-[#e6c200]/10 border-[#e6c200]/50' : 'bg-[#111] border-[#333] hover:border-[#555]'}`}
+                className={`flex items-center gap-3 cursor-pointer p-2 rounded border transition-all ${settings.harmony ? 'bg-white text-black border-white' : 'bg-[#111] border-[#333] hover:border-[#555]'}`}
                 onClick={() => updateParam('harmony', !settings.harmony)}
             >
-                <div className={`w-3 h-3 rounded-sm ${settings.harmony ? 'bg-[#e6c200] shadow-[0_0_10px_rgba(230,194,0,0.5)]' : 'bg-[#333]'}`}></div>
-                <span className={`text-[10px] uppercase font-bold tracking-wider ${settings.harmony ? 'text-[#e6c200]' : 'text-[#888]'}`}>
+                <div className={`w-3 h-3 rounded-sm ${settings.harmony ? 'bg-black' : 'bg-[#333]'}`}></div>
+                <span className={`text-[10px] uppercase font-bold tracking-wider ${settings.harmony ? 'text-black' : 'text-[#888]'}`}>
                     Harmony Mode
                 </span>
             </div>
 
             <button 
                 onClick={() => updateParam('active', !settings.active)} 
-                className={`w-full py-2 text-[10px] uppercase font-black tracking-[0.2em] transition-all rounded shadow-lg
+                className={`w-full py-2 text-[10px] uppercase font-black tracking-[0.2em] transition-all rounded
                 ${settings.active 
-                    ? 'bg-gradient-to-r from-[#e6c200] to-[#b39700] text-black hover:brightness-110 shadow-orange-500/20' 
+                    ? 'bg-white text-black hover:bg-gray-200' 
                     : 'bg-[#1a1a1a] text-[#555] border border-[#333] hover:border-[#555] hover:text-[#888]'
                 }`}
             >
