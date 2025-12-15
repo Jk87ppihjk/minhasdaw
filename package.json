@@ -15,7 +15,8 @@
     "jszip": "3.10.1",
     "file-saver": "2.0.5",
     "vite": "^7.2.7",
-    "@vitejs/plugin-react": "^5.1.2"
+    "@vitejs/plugin-react": "^5.1.2",
+    "@google/genai": "^1.33.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

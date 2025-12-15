@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { Settings2, PanelRightClose, Disc, Plus, Trash2, SlidersHorizontal } from 'lucide-react';
+import { Settings2, PanelRightClose, Disc, Plus, Trash2, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { Track } from '../../types';
 import { Knob } from '../Knob';
 import { EffectRegistry } from '../../services/EffectRegistry';
@@ -17,12 +18,15 @@ interface MixerSidebarProps {
   setEffectSelectorTrackId: (id: string | null) => void;
   setShowEffectSelector: (v: boolean) => void;
   setOpenedEffect: (val: { trackId: string, effectId: string } | null) => void;
-  setTracks: React.Dispatch<React.SetStateAction<Track[]>>; // For delete effect
+  setTracks: React.Dispatch<React.SetStateAction<Track[]>>; 
+  
+  // AI Mixing
+  onOpenAiAssistant: () => void;
 }
 
 export const MixerSidebar: React.FC<MixerSidebarProps> = ({
   isOpen, setIsOpen, isMobile, selectedTrack, updateTrack, updateEffects,
-  setEffectSelectorTrackId, setShowEffectSelector, setOpenedEffect, setTracks
+  setEffectSelectorTrackId, setShowEffectSelector, setOpenedEffect, setTracks, onOpenAiAssistant
 }) => {
   
   const handleEditName = () => {
@@ -65,12 +69,21 @@ export const MixerSidebar: React.FC<MixerSidebarProps> = ({
                     <div className="space-y-3 pt-2">
                         <div className="flex items-center justify-between mb-2">
                             <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-1"><Disc className="w-3 h-3" /> INSERTS CHAIN</h3>
-                            <button 
-                                onClick={() => { setEffectSelectorTrackId(selectedTrack.id); setShowEffectSelector(true); }}
-                                className="text-[10px] bg-[var(--accent)] text-black font-bold px-3 py-1 rounded-full flex gap-1 items-center hover:bg-white transition-colors shadow-lg shadow-[var(--accent)]/20"
-                            >
-                                <Plus className="w-3 h-3" /> FX
-                            </button>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={onOpenAiAssistant}
+                                    className="text-[10px] bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold px-2 py-1 rounded-full flex gap-1 items-center hover:scale-105 transition-transform shadow-lg shadow-purple-900/50 border border-white/20"
+                                    title="AI Mixing Assistant"
+                                >
+                                    <Sparkles className="w-3 h-3" /> AI
+                                </button>
+                                <button 
+                                    onClick={() => { setEffectSelectorTrackId(selectedTrack.id); setShowEffectSelector(true); }}
+                                    className="text-[10px] bg-[var(--accent)] text-black font-bold px-3 py-1 rounded-full flex gap-1 items-center hover:bg-white transition-colors shadow-lg shadow-[var(--accent)]/20"
+                                >
+                                    <Plus className="w-3 h-3" /> FX
+                                </button>
+                            </div>
                         </div>
                         
                         <div className="flex flex-col gap-2 min-h-[100px]">

@@ -26,6 +26,7 @@ import { Timeline } from './components/layout/Timeline';
 import { MixerSidebar } from './components/layout/MixerSidebar';
 import { ProjectManager } from './components/ProjectManager';
 import { Dashboard } from './components/Dashboard';
+import { AiAssistantModal } from './components/AiAssistantModal';
 
 // --- Constants ---
 const BASE_PX_PER_SEC = 50;
@@ -103,6 +104,9 @@ export default function App() {
   const [effectSelectorTrackId, setEffectSelectorTrackId] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   
+  // AI Mixing State
+  const [showAiModal, setShowAiModal] = useState(false);
+
   const [audioState, setAudioState] = useState<AudioEngineState>({
     isPlaying: false, currentTime: 0, totalDuration: 120, isRecording: false, bpm: 120, snapToGrid: true, metronomeOn: false, masterVolume: 0.8,
     loop: { active: false, start: 0, end: 4 }
@@ -826,11 +830,38 @@ export default function App() {
       );
   }
 
+  // AI Mixing Handler
+  const handleApplyAiMix = (newChain: string[], newSettings: any) => {
+      if (!selectedTrackId) return;
+      
+      setTracks(prev => prev.map(t => {
+          if (t.id === selectedTrackId) {
+              // Merge existing settings with new AI settings
+              const mergedEffects = { ...t.effects };
+              Object.keys(newSettings).forEach(key => {
+                  mergedEffects[key] = { ...(mergedEffects[key] || {}), ...newSettings[key] };
+              });
+
+              const updatedTrack = {
+                  ...t,
+                  activeEffects: newChain,
+                  effects: mergedEffects
+              };
+              
+              // Apply audio changes
+              audioEngine.rebuildTrackEffects(updatedTrack);
+              return updatedTrack;
+          }
+          return t;
+      }));
+  };
+
   return (
     <div className="flex flex-col h-screen w-full bg-[var(--bg-main)] text-[var(--text-main)] font-sans selection:bg-[var(--accent)] selection:text-black overflow-hidden relative transition-colors duration-300" style={THEMES[theme] as React.CSSProperties} onContextMenu={(e) => e.preventDefault()}>
       
       <ReleaseNotes />
 
+      {/* Modals */}
       <ProjectManager 
           isOpen={projectManagerOpen}
           mode={projectManagerMode}
@@ -839,6 +870,14 @@ export default function App() {
           onSelectRoot={handleSelectRootFolder}
           onConfirmAction={projectManagerMode === 'save' ? handleSaveProject : handleLoadProject}
       />
+
+      {showAiModal && selectedTrack && (
+          <AiAssistantModal 
+              track={selectedTrack}
+              onApplyMix={handleApplyAiMix}
+              onClose={() => setShowAiModal(false)}
+          />
+      )}
 
       {isProcessing && (
           <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center cursor-wait animate-in fade-in duration-300">
@@ -955,6 +994,7 @@ export default function App() {
         <MixerSidebar 
             isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} isMobile={isMobile} selectedTrack={selectedTrack} updateTrack={updateTrack} updateEffects={updateEffects}
             setEffectSelectorTrackId={setEffectSelectorTrackId} setShowEffectSelector={setShowEffectSelector} setOpenedEffect={setOpenedEffect} setTracks={setTracks}
+            onOpenAiAssistant={() => setShowAiModal(true)}
         />
 
         {/* Backdrop for Mobile Sidebar */}
