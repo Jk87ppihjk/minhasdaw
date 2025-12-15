@@ -36,7 +36,7 @@ const mixingSchema = {
 };
 
 export class AiMixingService {
-  private genAI: GoogleGenAI;
+  private genAI: any;
 
   constructor() {
     this.genAI = new GoogleGenAI({ apiKey: process.env.API_KEY });

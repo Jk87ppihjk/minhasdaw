@@ -1,3 +1,4 @@
+
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -12,8 +13,12 @@ interface State {
 }
 
 class ErrorBoundary extends Component<Props, State> {
+  public state: State;
+  public props: Props;
+
   constructor(props: Props) {
     super(props);
+    this.props = props;
     this.state = {
       hasError: false,
       error: null
