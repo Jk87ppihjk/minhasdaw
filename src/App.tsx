@@ -1,6 +1,8 @@
+
 import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { Music, FolderOpen, ArrowLeft, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, ArrowLeftRight, Volume2, Trash2, LogOut, X } from 'lucide-react';
 import saveAs from 'file-saver';
+import JSZip from 'jszip'; // Import JSZip
 import { audioEngine } from './services/AudioEngine';
 import { Track, TrackType, AudioEngineState, Clip, EffectSettings, ContextMenuState } from './types';
 import { EffectRegistry } from './services/EffectRegistry';
@@ -44,7 +46,7 @@ const THEMES: Record<string, React.CSSProperties> = {
     '--text-main': '#ffffff', 
     '--text-muted': '#a1a1aa', 
     '--border-color': '#3f3f46', 
-    '--accent': '#ffffff', 
+    '--accent': '#eab308', // Yellow-500
     '--waveform-bg': '#27272a', 
     '--waveform-wave': '#e4e4e7' 
   } as React.CSSProperties,
@@ -263,220 +265,163 @@ export default function App() {
     audioEngine.updateTrackSettings(masterTrack);
   }, [tracks, audioState.isPlaying, isMonitoring, audioState.masterVolume, masterTrack]);
 
-  // --- FILE SYSTEM API (PROJECT MANAGER) ---
-  
-  const handleSelectRootFolder = async () => {
-      try {
-          if (!('showDirectoryPicker' in window)) {
-              alert("Your browser does not support the File System Access API.");
-              return;
-          }
-          // Request access to a directory (The user should pick 'C:\Users\Desktop\Downloads\projeto' or similar)
-          const handle = await (window as any).showDirectoryPicker({
-              mode: 'readwrite',
-              startIn: 'documents'
-          });
-          setRootHandle(handle);
-      } catch (err) {
-          console.warn("Folder selection cancelled or failed", err);
-      }
-  };
+  // --- CLOUD SAVE/LOAD (ZIP) LOGIC ---
 
-  const toggleProjectManager = (mode: 'save' | 'open') => {
-      setProjectManagerMode(mode);
-      setProjectManagerOpen(true);
-  };
-
-  const handleSaveProject = async (projectName: string) => {
-      if (!rootHandle) return;
+  const handleCloudSave = async (projectName: string) => {
       setProjectManagerOpen(false);
       setIsProcessing(true);
-      setProcessingMessage("SAVING PROJECT...");
+      setProcessingMessage("PACKING & UPLOADING...");
 
       try {
-          // 1. Create/Get the specific project folder inside the root handle
-          // @ts-ignore
-          const projectDir = await rootHandle.getDirectoryHandle(projectName, { create: true });
-
-          // 2. Prepare JSON Data
+          const zip = new JSZip();
+          
+          // 1. Prepare JSON Data (Lightweight, no blobs)
           const projectState = {
               audioState,
-              masterTrack: { ...masterTrack, clips: [] }, // Save master settings
+              masterTrack: { ...masterTrack, clips: [] }, 
               tracks: tracks.map(t => ({
                   ...t,
                   clips: t.clips.map(c => ({
                       ...c,
-                      buffer: null,
-                      blob: null,
-                      fileName: `${c.id}.wav`
+                      buffer: null, // Don't save buffer in JSON
+                      blob: null,   // Don't save blob in JSON
+                      fileName: `${c.id}.wav` // Reference to file
                   }))
               }))
           };
+          zip.file('project.monochrome', JSON.stringify(projectState));
 
-          // 3. Save JSON File
-          // @ts-ignore
-          const jsonHandle = await projectDir.getFileHandle('project.monochrome', { create: true });
-          // @ts-ignore
-          const writable = await jsonHandle.createWritable();
-          await writable.write(JSON.stringify(projectState));
-          await writable.close();
-
-          // 4. Save Audio Assets in 'samples' subfolder
-          // @ts-ignore
-          const samplesDir = await projectDir.getDirectoryHandle('samples', { create: true });
-          
-          for (const track of tracks) {
-              for (const clip of track.clips) {
-                  if (clip.buffer) {
-                      let blobToWrite = clip.blob;
-                      if (!blobToWrite) {
-                          blobToWrite = audioEngine.bufferToWave(clip.buffer, clip.buffer.length);
+          // 2. Add Samples to ZIP
+          const samplesFolder = zip.folder("samples");
+          if (samplesFolder) {
+              for (const track of tracks) {
+                  for (const clip of track.clips) {
+                      if (clip.buffer) {
+                          // Convert buffer to WAV Blob
+                          let blobToWrite = clip.blob;
+                          if (!blobToWrite) {
+                              blobToWrite = audioEngine.bufferToWave(clip.buffer, clip.buffer.length);
+                          }
+                          samplesFolder.file(`${clip.id}.wav`, blobToWrite);
                       }
-                      // @ts-ignore
-                      const fileHandle = await samplesDir.getFileHandle(`${clip.id}.wav`, { create: true });
-                      // @ts-ignore
-                      const fileWritable = await fileHandle.createWritable();
-                      await fileWritable.write(blobToWrite);
-                      await fileWritable.close();
                   }
               }
           }
-          
-          // UPDATE CURRENT PROJECT NAME
-          setCurrentProjectName(projectName);
 
+          // 3. Generate ZIP Blob
+          const content = await zip.generateAsync({ type: "blob" });
+
+          // 4. Upload to API
+          const formData = new FormData();
+          formData.append('name', projectName);
+          formData.append('projectZip', content, `${projectName}.zip`);
+
+          await api.post('/projects/cloud/save', formData, {
+              headers: { 'Content-Type': 'multipart/form-data' }
+          });
+
+          setCurrentProjectName(projectName);
           setTimeout(() => {
               setIsProcessing(false);
-              alert(`Projeto "${projectName}" salvo com sucesso!`);
+              alert("Projeto salvo na nuvem com sucesso!");
           }, 500);
 
       } catch (err) {
-          console.error(err);
+          console.error("Cloud Save Error:", err);
           setIsProcessing(false);
-          alert("Erro ao salvar projeto. Verifique as permissões.");
+          alert("Erro ao salvar na nuvem.");
       }
   };
 
-  const handleLoadProject = async (projectName: string) => {
-      if (!rootHandle) return;
-      
+  const handleCloudLoad = async (projectId: string) => {
       await audioEngine.resumeContext();
       handleStop();
-      setProjectManagerOpen(false);
       setIsProcessing(true);
-      setProcessingMessage("LOADING PROJECT...");
+      setProcessingMessage("DOWNLOADING & UNPACKING...");
 
       try {
-          // 1. Get Project Folder
-          // @ts-ignore
-          const projectDir = await rootHandle.getDirectoryHandle(projectName);
+          // 1. Get Project URL
+          const { data: projectMeta } = await api.get(`/projects/${projectId}`);
+          const zipUrl = projectMeta.zipUrl;
 
-          // 2. Load JSON
-          let jsonHandle;
-          try {
-              // @ts-ignore
-              jsonHandle = await projectDir.getFileHandle('project.monochrome');
-          } catch(e) {
-              throw new Error("Arquivo de projeto inválido.");
-          }
+          // 2. Download ZIP
+          const response = await fetch(zipUrl);
+          const blob = await response.blob();
 
-          // @ts-ignore
-          const file = await jsonHandle.getFile();
-          const text = await file.text();
-          const projectData = JSON.parse(text);
+          // 3. Unzip
+          const zip = await JSZip.loadAsync(blob);
+          
+          // 4. Load JSON State
+          const jsonFile = zip.file('project.monochrome');
+          if (!jsonFile) throw new Error("Invalid Project File");
+          
+          const jsonText = await jsonFile.async('string');
+          const projectData = JSON.parse(jsonText);
 
-          // 3. Load Samples
+          // 5. Load Audio Samples
           const loadedTracks: Track[] = [];
-          let samplesDir: any;
-          try {
-              // @ts-ignore
-              samplesDir = await projectDir.getDirectoryHandle('samples');
-          } catch(e) {
-              console.warn("Samples folder missing");
-          }
-
+          
           for (const trackData of projectData.tracks) {
               const clips: Clip[] = [];
               for (const clipData of trackData.clips) {
-                  if (clipData.fileName && samplesDir) {
-                      try {
-                          // @ts-ignore
-                          const audioHandle = await samplesDir.getFileHandle(clipData.fileName);
-                          // @ts-ignore
-                          const audioFile = await audioHandle.getFile();
-                          const arrayBuffer = await audioFile.arrayBuffer();
-                          
+                  if (clipData.fileName) {
+                      const sampleFile = zip.file(`samples/${clipData.fileName}`);
+                      if (sampleFile) {
+                          const arrayBuffer = await sampleFile.async('arraybuffer');
                           if (arrayBuffer.byteLength > 0) {
                               const buffer = await audioEngine.decodeAudioData(arrayBuffer);
-                              clips.push({ 
-                                  ...clipData, 
+                              clips.push({
+                                  ...clipData,
                                   buffer: buffer,
-                                  blob: new Blob([arrayBuffer], { type: 'audio/wav' }) 
+                                  blob: new Blob([arrayBuffer], { type: 'audio/wav' })
                               });
                           }
-                      } catch(e) {
-                          console.warn(`Missing file: ${clipData.fileName}`);
                       }
                   }
               }
               loadedTracks.push({ ...trackData, clips });
           }
 
+          // 6. Restore State
           setTracks(loadedTracks);
-          // Load Master Track if exists
           if (projectData.masterTrack) {
               const loadedMaster = { ...masterTrack, ...projectData.masterTrack };
               setMasterTrack(loadedMaster);
               audioEngine.rebuildTrackEffects(loadedMaster);
           }
-          
           setAudioState(prev => ({ ...prev, ...projectData.audioState, isPlaying: false }));
-          
-          // UPDATE CURRENT PROJECT NAME (This switches view from Dashboard to DAW)
-          setCurrentProjectName(projectName);
-          
+          setCurrentProjectName(projectMeta.name);
+
           setTimeout(() => setIsProcessing(false), 500);
 
       } catch (err) {
-          console.error(err);
+          console.error("Cloud Load Error:", err);
           setIsProcessing(false);
-          alert("Erro ao abrir projeto: " + (err as Error).message);
+          alert("Erro ao abrir projeto da nuvem.");
       }
   };
 
   const handleCreateNewProject = async () => {
-      // Prompt user for name immediately
       const name = prompt("Nome do Novo Projeto:", "Sem Titulo");
       if (!name) return;
       
-      // Reset state for new project
       setTracks([]);
-      setMasterTrack({ ...masterTrack, activeEffects: ['proLimiter'] }); // Reset master
+      setMasterTrack({ ...masterTrack, activeEffects: ['proLimiter'] });
       setAudioState({
         isPlaying: false, currentTime: 0, totalDuration: 120, isRecording: false, bpm: 120, snapToGrid: true, metronomeOn: false, masterVolume: 0.8,
         loop: { active: false, start: 0, end: 4 }
       });
-      
       await audioEngine.resumeContext();
       
-      // Save empty project to establish folder
-      await handleSaveProject(name);
+      // Initial cloud save to "reserve" the name/slot
+      handleCloudSave(name);
   };
 
-  // --- SMART SAVE LOGIC ---
   const handleQuickSave = () => {
-      // 1. Se não tem pasta raiz definida, forçar abrir gerenciador
-      if (!rootHandle) {
-          toggleProjectManager('save');
-          return;
-      }
-
-      // 2. Se já tem nome, salva direto (Quick Save)
       if (currentProjectName) {
-          handleSaveProject(currentProjectName);
+          handleCloudSave(currentProjectName);
       } else {
-          // 3. Se não tem nome (primeira vez), abre gerenciador para nomear (Save As)
-          toggleProjectManager('save');
+          setProjectManagerOpen(true); // Open modal to ask for name
       }
   };
 
@@ -814,6 +759,7 @@ export default function App() {
   const closeContextMenu = () => setContextMenu(prev => ({ ...prev, visible: false }));
   useEffect(() => { window.addEventListener('click', closeContextMenu); return () => window.removeEventListener('click', closeContextMenu); }, []);
 
+  // --- PROCESSING UTILS ---
   const processClipBuffer = async (action: 'noise' | 'fadein' | 'fadeout' | 'reverse' | 'normalize' | 'neural' | 'silence' | 'removesilence' | 'invert' | 'gain' | 'lofi' | 'deesser') => {
       if (!contextMenu.clipId || !contextMenu.trackId) return; closeContextMenu(); setIsProcessing(true);
       setProcessingMessage(action.toUpperCase() + '...');
@@ -939,7 +885,7 @@ export default function App() {
   const selectedTrack = selectedTrackId === 'MASTER' ? masterTrack : tracks.find(t => t.id === selectedTrackId);
   const selectedClip = selectedTrack && selectedClipId ? selectedTrack.clips.find(c => c.id === selectedClipId) : null;
 
-  // --- RENDER CONDITION: AUTH ---
+  // --- RENDER CONDITION: AUTH & CHECKOUT ---
   
   if (isAuthChecking) {
       return <div className="h-screen w-full bg-[#050505] flex items-center justify-center text-white">Loading Studio...</div>;
@@ -957,9 +903,7 @@ export default function App() {
                 <button onClick={handleLogout} className="flex items-center gap-2 text-zinc-500 hover:text-white transition-colors text-xs uppercase font-bold tracking-widest"><LogOut className="w-4 h-4" /> Sair</button>
             </div>
             <Dashboard 
-                rootHandle={rootHandle}
-                onSelectRoot={handleSelectRootFolder}
-                onOpenProject={handleLoadProject}
+                onOpenProject={handleCloudLoad}
                 onNewProject={handleCreateNewProject}
             />
           </>
@@ -1014,8 +958,8 @@ export default function App() {
         mode={projectManagerMode}
         onClose={() => setProjectManagerOpen(false)}
         rootHandle={rootHandle}
-        onSelectRoot={handleSelectRootFolder}
-        onConfirmAction={projectManagerMode === 'save' ? handleSaveProject : handleLoadProject}
+        onSelectRoot={() => {}}
+        onConfirmAction={handleCloudSave}
       />
 
       {showAiModal && (
@@ -1050,7 +994,7 @@ export default function App() {
         canUndo={canUndo}
         canRedo={canRedo}
         saveProjectToDisk={handleQuickSave}
-        openProjectFromDisk={() => toggleProjectManager('open')}
+        openProjectFromDisk={() => handleGoHome()}
         onGoHome={handleGoHome}
         exportWav={exportWav}
         toggleTheme={toggleTheme}

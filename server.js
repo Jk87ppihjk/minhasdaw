@@ -20,16 +20,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // --- DEBUG: VERIFICAÇÃO DE VARIÁVEIS DE AMBIENTE ---
 console.log("========================================");
-console.log("🚀 INICIANDO SERVIDOR MONOCHROME STUDIO (FREE VERSION)");
-console.log("========================================");
-console.log("Environment Variables Check:");
-console.log(`- NODE_ENV: ${process.env.NODE_ENV}`);
-console.log(`- PORT: ${PORT}`);
-console.log(`- DB_HOST: ${process.env.DB_HOST || '(NOT SET)'}`);
-console.log(`- DB_USER: ${process.env.DB_USER || '(NOT SET)'}`);
-console.log(`- DB_NAME: ${process.env.DB_NAME || '(NOT SET)'}`);
-console.log(`- DB_PASSWORD: ${process.env.DB_PASSWORD ? '****** (SET)' : '(NOT SET)'}`); 
-console.log(`- CLOUDINARY_CLOUD_NAME: ${process.env.CLOUDINARY_CLOUD_NAME || '(NOT SET)'}`);
+console.log("🚀 INICIANDO SERVIDOR MONOCHROME STUDIO (FREE CLOUD ZIP)");
 console.log("========================================");
 
 // --- MIDDLEWARE ---
@@ -38,8 +29,8 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json({ limit: '50mb' })); 
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '100mb' })); 
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // --- CONFIGURAÇÕES ---
 
@@ -69,10 +60,7 @@ const connectDB = async () => {
         
         await initDB();
     } catch (err) {
-        console.error('❌ FATAL DATABASE ERROR:');
-        console.error(`   Code: ${err.code}`);
-        console.error(`   Message: ${err.message}`);
-        console.error('   Check your DB_HOST, DB_USER, DB_PASSWORD and IP Whitelist settings.');
+        console.error('❌ FATAL DATABASE ERROR:', err);
     }
 };
 
@@ -88,13 +76,18 @@ if (process.env.CLOUDINARY_CLOUD_NAME) {
     console.warn('⚠️ Cloudinary credentials missing. Uploads will fail.');
 }
 
-// 3. Multer (Upload) Configuration
+// 3. Multer (Upload) Configuration - Modified for ZIP support
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
-    params: {
-        folder: 'monochrome-projects',
-        resource_type: 'auto', 
-        allowed_formats: ['wav', 'mp3', 'webm', 'png', 'jpg'],
+    params: async (req, file) => {
+        // Se for ZIP, trata como RAW para não tentar processar como imagem/video
+        const isZip = file.mimetype === 'application/zip' || file.mimetype === 'application/x-zip-compressed' || file.originalname.endsWith('.zip');
+        return {
+            folder: 'monochrome-projects',
+            resource_type: isZip ? 'raw' : 'auto', 
+            public_id: `project_${Date.now()}_${file.originalname.replace(/\.[^/.]+$/, "")}`,
+            format: isZip ? 'zip' : undefined, // Força extensão zip se for raw
+        };
     },
 });
 const upload = multer({ storage: storage });
@@ -107,52 +100,43 @@ const initDB = async () => {
         connection = await pool.getConnection();
         console.log('🛠️  Checking Database Schema...');
 
-        // 1. Tabela de Usuários - AGORA GRATUITO POR PADRÃO (is_subscribed TRUE)
+        // 1. Tabela de Usuários (FREE = TRUE DEFAULT)
         await connection.query(`
-CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    name VARCHAR(255),
-    is_subscribed BOOLEAN DEFAULT TRUE,
-    subscription_end DATE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
+            CREATE TABLE IF NOT EXISTS users (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                email VARCHAR(255) NOT NULL UNIQUE,
+                password VARCHAR(255) NOT NULL,
+                name VARCHAR(255),
+                is_subscribed BOOLEAN DEFAULT TRUE,
+                subscription_end DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
         `);
-        console.log('   - Table "users": OK');
 
-        // 2. Tabela de Projetos
+        // 2. Tabela de Projetos - Adicionando zip_url se não existir
         await connection.query(`
-CREATE TABLE IF NOT EXISTS projects (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    data LONGTEXT, 
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-)
+            CREATE TABLE IF NOT EXISTS projects (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                data LONGTEXT, 
+                zip_url VARCHAR(512),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
         `);
-        console.log('   - Table "projects": OK');
+        
+        // Add column safely if it doesn't exist (Migration)
+        try {
+            await connection.query("ALTER TABLE projects ADD COLUMN zip_url VARCHAR(512)");
+            console.log("   - Added 'zip_url' column to projects table.");
+        } catch(e) {
+            // Ignore error if column exists
+        }
 
-        // 3. Tabela de Assets
-        await connection.query(`
-CREATE TABLE IF NOT EXISTS assets (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    project_id INT,
-    public_id VARCHAR(255) NOT NULL,
-    url VARCHAR(512) NOT NULL,
-    format VARCHAR(50),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-)
-        `);
-        console.log('   - Table "assets": OK');
-
-        // Atualiza usuários antigos para terem acesso gratuito se necessário
+        // Force update old users to subscribed
         await connection.query("UPDATE users SET is_subscribed = TRUE WHERE is_subscribed = FALSE");
-        console.log("   - Updated existing users to Free/Subscribed status.");
 
         console.log('✅ Database Schema Sync Complete.');
     } catch (error) {
@@ -182,24 +166,20 @@ const authenticateToken = (req, res, next) => {
 app.post('/api/auth/register', async (req, res) => {
     const { email, password, name } = req.body;
     if (!email || !password) return res.status(400).json({ message: 'Email and password required' });
-    
     if (!pool) return res.status(500).json({ message: 'Database not connected' });
 
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
-        // Cria usuário já com is_subscribed = TRUE
         const [result] = await pool.query(
             'INSERT INTO users (email, password, name, is_subscribed) VALUES (?, ?, ?, TRUE)', 
             [email, hashedPassword, name]
         );
-        
         const token = jwt.sign({ id: result.insertId, email }, process.env.JWT_SECRET || 'monochrome_secret_key');
         res.json({ token, user: { id: result.insertId, email, name, is_subscribed: true } });
     } catch (e) {
         if (e.code === 'ER_DUP_ENTRY') {
             return res.status(409).json({ message: 'Email already exists' });
         }
-        console.error("Register Error:", e);
         res.status(500).json({ message: 'Error registering user', error: e.message });
     }
 });
@@ -215,13 +195,11 @@ app.post('/api/auth/login', async (req, res) => {
         const user = rows[0];
         if (await bcrypt.compare(password, user.password)) {
             const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET || 'monochrome_secret_key');
-            // Sempre retorna true para acesso gratuito
             res.json({ token, user: { id: user.id, email: user.email, name: user.name, is_subscribed: true } });
         } else {
             res.status(403).json({ message: 'Invalid password' });
         }
     } catch (e) {
-        console.error("Login Error:", e);
         res.status(500).json({ message: 'Login error' });
     }
 });
@@ -237,10 +215,13 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
     }
 });
 
-// 2. Gerenciamento de Projetos
+// 2. Gerenciamento de Projetos (CLOUD ZIP)
+
+// LISTAR PROJETOS
 app.get('/api/projects', authenticateToken, async (req, res) => {
     if (!pool) return res.sendStatus(500);
     try {
+        // Retorna apenas metadados para a lista
         const [rows] = await pool.query('SELECT id, name, updated_at FROM projects WHERE user_id = ? ORDER BY updated_at DESC', [req.user.id]);
         res.json(rows);
     } catch (e) {
@@ -248,69 +229,57 @@ app.get('/api/projects', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/projects/save', authenticateToken, async (req, res) => {
-    const { name, data } = req.body;
-    if (!name || !data) return res.status(400).json({ message: 'Missing name or data' });
+// SALVAR PROJETO (UPLOAD ZIP)
+app.post('/api/projects/cloud/save', authenticateToken, upload.single('projectZip'), async (req, res) => {
+    // Agora esperamos um arquivo ZIP no campo 'projectZip' e o nome no body
+    if (!req.file || !req.body.name) return res.status(400).json({ message: 'Missing file or name' });
     if (!pool) return res.sendStatus(500);
 
+    const projectName = req.body.name;
+    const zipUrl = req.file.path || req.file.secure_url; // Cloudinary URL
+
     try {
-        const [existing] = await pool.query('SELECT id FROM projects WHERE user_id = ? AND name = ?', [req.user.id, name]);
+        const [existing] = await pool.query('SELECT id FROM projects WHERE user_id = ? AND name = ?', [req.user.id, projectName]);
         
         if (existing.length > 0) {
-            await pool.query('UPDATE projects SET data = ? WHERE id = ?', [JSON.stringify(data), existing[0].id]);
+            // Update URL e timestamp
+            await pool.query('UPDATE projects SET zip_url = ?, updated_at = NOW() WHERE id = ?', [zipUrl, existing[0].id]);
         } else {
-            await pool.query('INSERT INTO projects (user_id, name, data) VALUES (?, ?, ?)', [req.user.id, name, JSON.stringify(data)]);
+            // Create New
+            await pool.query('INSERT INTO projects (user_id, name, zip_url) VALUES (?, ?, ?)', [req.user.id, projectName, zipUrl]);
         }
-        res.json({ success: true });
+        
+        res.json({ success: true, url: zipUrl });
     } catch (e) {
-        console.error(e);
-        res.status(500).json({ message: 'Error saving project' });
+        console.error("Save Error:", e);
+        res.status(500).json({ message: 'Error saving project to cloud' });
     }
 });
 
-app.post('/api/projects/load', authenticateToken, async (req, res) => {
-    const { name } = req.body;
+// CARREGAR PROJETO (OBTER URL)
+app.get('/api/projects/:id', authenticateToken, async (req, res) => {
     if (!pool) return res.sendStatus(500);
     try {
-        const [rows] = await pool.query('SELECT data FROM projects WHERE user_id = ? AND name = ?', [req.user.id, name]);
+        const [rows] = await pool.query('SELECT name, zip_url FROM projects WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
         if (rows.length > 0) {
-            res.json(JSON.parse(rows[0].data));
+            // Retorna a URL para o frontend baixar e descompactar
+            res.json({ 
+                name: rows[0].name,
+                zipUrl: rows[0].zip_url 
+            });
         } else {
             res.status(404).json({ message: 'Project not found' });
         }
     } catch (e) {
-        res.status(500).json({ message: 'Error loading project' });
+        res.status(500).json({ message: 'Error fetching project' });
     }
 });
 
-// 3. Upload de Assets
-app.post('/api/assets/upload', authenticateToken, upload.single('file'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-    if (!pool) return res.sendStatus(500);
-    
-    try {
-        await pool.query('INSERT INTO assets (user_id, public_id, url, format) VALUES (?, ?, ?, ?)', 
-            [req.user.id, req.file.filename, req.file.path, req.file.mimetype]);
-            
-        res.json({ 
-            success: true,
-            url: req.file.path, 
-            public_id: req.file.filename,
-            format: req.file.mimetype
-        });
-    } catch (e) {
-        console.error(e);
-        res.status(500).json({ message: 'Error saving asset info' });
-    }
-});
-
-// --- SERVIDOR DE ARQUIVOS ESTÁTICOS (PRODUÇÃO) ---
+// --- SERVIDOR DE ARQUIVOS ESTÁTICOS ---
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER;
 
 if (isProduction) {
-    console.log('📂 Serving static files from ./dist');
     app.use(express.static(path.join(__dirname, 'dist')));
-    
     app.get('*', (req, res) => {
         if (req.path.startsWith('/api')) {
             return res.status(404).json({ message: 'API Route not found' });
@@ -319,7 +288,6 @@ if (isProduction) {
     });
 }
 
-// Inicia o Servidor e Banco
 connectDB().then(() => {
     app.listen(PORT, () => {
         console.log(`🚀 Server running on port ${PORT}`);

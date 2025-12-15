@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Music, ArrowRight, Loader2, Mail, Lock, User } from 'lucide-react';
 import { api } from '../../services/api';
@@ -40,13 +39,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         <div className="fixed inset-0 bg-[#050505] flex items-center justify-center p-4">
             {/* Background Effects */}
             <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-                <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-purple-900/10 rounded-full blur-[120px]"></div>
-                <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-blue-900/10 rounded-full blur-[120px]"></div>
+                <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-yellow-900/10 rounded-full blur-[120px]"></div>
+                <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-orange-900/10 rounded-full blur-[120px]"></div>
             </div>
 
             <div className="w-full max-w-md bg-[#0a0a0a] border border-zinc-800 rounded-2xl shadow-2xl p-8 relative z-10 animate-in fade-in zoom-in-95 duration-300">
                 <div className="flex flex-col items-center gap-4 mb-8">
-                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+                    <div className="w-12 h-12 bg-yellow-500 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(234,179,8,0.3)]">
                         <Music className="w-6 h-6 text-black" />
                     </div>
                     <h1 className="text-2xl font-black text-white tracking-tight">MONOCHROME STUDIO</h1>
@@ -66,7 +65,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                                     required={!isLogin}
                                     value={formData.name}
                                     onChange={e => setFormData({...formData, name: e.target.value})}
-                                    className="w-full bg-[#111] border border-zinc-800 rounded-lg py-3 pl-10 pr-4 text-white text-sm focus:outline-none focus:border-white transition-colors"
+                                    className="w-full bg-[#111] border border-zinc-800 rounded-lg py-3 pl-10 pr-4 text-white text-sm focus:outline-none focus:border-yellow-500 transition-colors"
                                     placeholder="Seu nome artístico"
                                 />
                             </div>
@@ -82,7 +81,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                                 required
                                 value={formData.email}
                                 onChange={e => setFormData({...formData, email: e.target.value})}
-                                className="w-full bg-[#111] border border-zinc-800 rounded-lg py-3 pl-10 pr-4 text-white text-sm focus:outline-none focus:border-white transition-colors"
+                                className="w-full bg-[#111] border border-zinc-800 rounded-lg py-3 pl-10 pr-4 text-white text-sm focus:outline-none focus:border-yellow-500 transition-colors"
                                 placeholder="produtor@exemplo.com"
                             />
                         </div>
@@ -97,7 +96,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                                 required
                                 value={formData.password}
                                 onChange={e => setFormData({...formData, password: e.target.value})}
-                                className="w-full bg-[#111] border border-zinc-800 rounded-lg py-3 pl-10 pr-4 text-white text-sm focus:outline-none focus:border-white transition-colors"
+                                className="w-full bg-[#111] border border-zinc-800 rounded-lg py-3 pl-10 pr-4 text-white text-sm focus:outline-none focus:border-yellow-500 transition-colors"
                                 placeholder="••••••••"
                             />
                         </div>
@@ -112,7 +111,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                     <button 
                         type="submit"
                         disabled={isLoading}
-                        className="mt-2 w-full bg-white text-black font-bold py-3 rounded-lg text-sm uppercase tracking-widest hover:bg-gray-200 transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
+                        className="mt-2 w-full bg-yellow-500 text-black font-bold py-3 rounded-lg text-sm uppercase tracking-widest hover:bg-yellow-400 transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(234,179,8,0.2)]"
                     >
                         {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (isLogin ? 'Entrar' : 'Criar Conta')}
                         {!isLoading && <ArrowRight className="w-4 h-4" />}
