@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Check, Zap, Cloud, Infinity, ShieldCheck, Loader2, Lock, User, Mail, FileText, Smartphone, Copy } from 'lucide-react';
+import { Check, Zap, Cloud, Infinity, ShieldCheck, Loader2, Lock, User, Mail, FileText, Smartphone, Copy, AlertCircle } from 'lucide-react';
 import { api } from '../../services/api';
 
 interface CheckoutPageProps {
@@ -17,6 +17,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
     const [brickReady, setBrickReady] = useState(false);
     const [paymentResult, setPaymentResult] = useState<{ status: 'approved' | 'pending' | 'error', data?: any } | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [errorMsg, setErrorMsg] = useState('');
     
     const controllerRef = useRef<any>(null);
 
@@ -31,7 +32,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
             const publicKey = process.env.MP_PUBLIC_KEY;
             if (!publicKey) {
                 console.error("MP_PUBLIC_KEY missing");
-                alert("Erro: Chave pública do Mercado Pago não encontrada.");
+                setErrorMsg("Erro de configuração: Chave pública não encontrada.");
                 return;
             }
 
@@ -49,7 +50,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                 customization: {
                     visual: {
                         style: {
-                            theme: 'dark', // Force dark theme for the brick to match the UI
+                            theme: 'dark', // Tema escuro nativo do MP
                         }
                     },
                     paymentMethods: {
@@ -59,21 +60,24 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                     },
                 },
                 callbacks: {
-                    onReady: () => setBrickReady(true),
+                    onReady: () => {
+                        setBrickReady(true);
+                        setErrorMsg('');
+                    },
                     onSubmit: async ({ selectedPaymentMethod, formData }: any) => {
-                        // Manual Validation
+                        // Validação Manual dos campos externos ao Brick
                         if (!fullName || !email || !cpf || cpf.length < 11) {
-                            alert("Por favor, preencha seus dados pessoais (Nome, Email, CPF) antes de realizar o pagamento.");
-                            // Reject promise to stop brick spinner
+                            alert("Por favor, preencha seus dados pessoais (Nome, Email, CPF) no formulário acima antes de pagar.");
+                            // Rejeita a promise para o Brick saber que houve erro e parar o loading interno
                             return new Promise((resolve, reject) => reject());
                         }
 
                         setIsProcessing(true);
+                        setErrorMsg('');
 
                         try {
                             const cleanCpf = cpf.replace(/\D/g, '');
                             
-                            // Construct payload matching server.js expectation
                             const payload = {
                                 transaction_amount: formData.transaction_amount,
                                 description: "Monochrome Studio Pro",
@@ -88,11 +92,12 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                 issuer_id: formData.issuer_id,
                             };
 
+                            // ROTA CORRETA DO BACKEND (Payment Brick)
                             const { data } = await api.post('/checkout/process_payment', payload);
 
                             if (data.status === 'APPROVED') {
                                 setPaymentResult({ status: 'approved' });
-                                setTimeout(() => onSuccess(), 3000); // Wait 3s then enter app
+                                setTimeout(() => onSuccess(), 3000); 
                             } else if (data.status === 'PENDING' && formData.payment_method_id === 'pix') {
                                 setPaymentResult({ 
                                     status: 'pending', 
@@ -102,27 +107,34 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                     }
                                 });
                             } else {
-                                alert("Pagamento recusado ou em análise. Verifique os dados do cartão.");
+                                setErrorMsg("Pagamento recusado ou em análise. Verifique os dados.");
                             }
                             setIsProcessing(false);
 
                         } catch (error: any) {
                             console.error(error);
                             setIsProcessing(false);
-                            alert("Erro ao processar: " + (error.response?.data?.message || "Falha na comunicação com o servidor."));
+                            const msg = error.response?.data?.message || error.message || "Falha na comunicação.";
+                            setErrorMsg(`Erro ao processar: ${msg}`);
                         }
                     },
-                    onError: (error: any) => console.error("Brick Error:", error),
+                    onError: (error: any) => {
+                        console.error("Brick Error:", error);
+                        setErrorMsg("Erro interno do módulo de pagamento.");
+                    },
                 },
             };
 
             const container = document.getElementById('paymentBrick_container');
             if (container) container.innerHTML = ''; 
             
-            controllerRef.current = await bricksBuilder.create("payment", "paymentBrick_container", settings);
+            try {
+                controllerRef.current = await bricksBuilder.create("payment", "paymentBrick_container", settings);
+            } catch (e) {
+                console.error("Brick Create Error", e);
+            }
         };
 
-        // Delay slighty to ensure DOM is ready and SDK is loaded
         const timer = setTimeout(loadBrick, 500);
         return () => clearTimeout(timer);
     }, [user]);
@@ -147,13 +159,13 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                     <div className="relative z-10">
                         <h2 className="text-4xl font-black text-white mb-8 tracking-tighter leading-[0.9]">
                             DESBLOQUEIE SEU<br/>
-                            <span className="text-zinc-600">POTENCIAL</span>
+                            <span className="text-yellow-500">POTENCIAL</span>
                         </h2>
                         
                         <div className="space-y-6">
                             <div className="flex items-start gap-4 group">
-                                <div className="p-2 bg-green-900/20 rounded-lg border border-green-900/30 group-hover:border-green-500/50 transition-colors">
-                                    <Check className="w-5 h-5 text-green-500" />
+                                <div className="p-2 bg-yellow-500/10 rounded-lg border border-yellow-500/20 group-hover:border-yellow-500/50 transition-colors">
+                                    <Check className="w-5 h-5 text-yellow-500" />
                                 </div>
                                 <div>
                                     <h4 className="text-white font-bold text-sm">Projetos Ilimitados</h4>
@@ -161,8 +173,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                 </div>
                             </div>
                             <div className="flex items-start gap-4 group">
-                                <div className="p-2 bg-purple-900/20 rounded-lg border border-purple-900/30 group-hover:border-purple-500/50 transition-colors">
-                                    <Zap className="w-5 h-5 text-purple-500" />
+                                <div className="p-2 bg-yellow-500/10 rounded-lg border border-yellow-500/20 group-hover:border-yellow-500/50 transition-colors">
+                                    <Zap className="w-5 h-5 text-yellow-500" />
                                 </div>
                                 <div>
                                     <h4 className="text-white font-bold text-sm">AI Mixing & Mastering</h4>
@@ -170,8 +182,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                 </div>
                             </div>
                             <div className="flex items-start gap-4 group">
-                                <div className="p-2 bg-blue-900/20 rounded-lg border border-blue-900/30 group-hover:border-blue-500/50 transition-colors">
-                                    <Cloud className="w-5 h-5 text-blue-500" />
+                                <div className="p-2 bg-yellow-500/10 rounded-lg border border-yellow-500/20 group-hover:border-yellow-500/50 transition-colors">
+                                    <Cloud className="w-5 h-5 text-yellow-500" />
                                 </div>
                                 <div>
                                     <h4 className="text-white font-bold text-sm">Cloud Storage</h4>
@@ -179,8 +191,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                 </div>
                             </div>
                             <div className="flex items-start gap-4 group">
-                                <div className="p-2 bg-orange-900/20 rounded-lg border border-orange-900/30 group-hover:border-orange-500/50 transition-colors">
-                                    <Infinity className="w-5 h-5 text-orange-500" />
+                                <div className="p-2 bg-yellow-500/10 rounded-lg border border-yellow-500/20 group-hover:border-yellow-500/50 transition-colors">
+                                    <Infinity className="w-5 h-5 text-yellow-500" />
                                 </div>
                                 <div>
                                     <h4 className="text-white font-bold text-sm">Efeitos Premium</h4>
@@ -209,11 +221,11 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                         <div>
                             <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">Assinatura Pro</span>
                             <div className="flex items-baseline gap-1">
-                                <span className="text-2xl font-black text-white">R$ 49,90</span>
+                                <span className="text-2xl font-black text-yellow-500">R$ 49,90</span>
                                 <span className="text-zinc-500 text-xs">/mês</span>
                             </div>
                         </div>
-                        <div className="h-8 w-8 bg-zinc-900 rounded-full flex items-center justify-center">
+                        <div className="h-8 w-8 bg-zinc-900 rounded-full flex items-center justify-center border border-zinc-800">
                             <Lock className="w-4 h-4 text-zinc-500" />
                         </div>
                     </div>
@@ -221,6 +233,14 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                     {/* Scrollable Content Area */}
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-6 relative">
                         
+                        {/* Error Message */}
+                        {errorMsg && (
+                            <div className="mb-4 p-3 bg-red-900/20 border border-red-900/50 rounded flex items-center gap-2 text-red-400 text-xs">
+                                <AlertCircle className="w-4 h-4 shrink-0" />
+                                {errorMsg}
+                            </div>
+                        )}
+
                         {/* SUCCESS OVERLAY */}
                         {paymentResult?.status === 'approved' && (
                             <div className="absolute inset-0 bg-[#050505] z-50 flex flex-col items-center justify-center animate-in fade-in zoom-in duration-300">
@@ -236,7 +256,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                         {paymentResult?.status === 'pending' && paymentResult.data && (
                             <div className="absolute inset-0 bg-[#050505] z-50 flex flex-col items-center p-8 animate-in fade-in slide-in-from-bottom-10">
                                 <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-                                    <Smartphone className="w-5 h-5 text-green-500" />
+                                    <Smartphone className="w-5 h-5 text-yellow-500" />
                                     Pagamento via PIX
                                 </h3>
                                 <div className="bg-white p-3 rounded-xl mb-6 shadow-xl">
@@ -249,7 +269,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                         <button onClick={() => { navigator.clipboard.writeText(paymentResult.data.qrCodeText); alert("Copiado!"); }} className="p-2 hover:bg-zinc-800 rounded text-white"><Copy className="w-4 h-4" /></button>
                                     </div>
                                 </div>
-                                <button onClick={onSuccess} className="w-full py-3 bg-white text-black font-bold text-xs uppercase tracking-widest rounded-lg hover:bg-zinc-200 transition-colors">
+                                <button onClick={onSuccess} className="w-full py-3 bg-yellow-500 text-black font-bold text-xs uppercase tracking-widest rounded-lg hover:bg-yellow-400 transition-colors shadow-[0_0_15px_rgba(234,179,8,0.3)]">
                                     Já realizei o pagamento
                                 </button>
                             </div>
@@ -263,7 +283,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                     <input 
                                         type="text" 
                                         value={fullName} onChange={(e) => setFullName(e.target.value)}
-                                        className="w-full bg-[#111] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:border-zinc-600 outline-none transition-colors"
+                                        className="w-full bg-[#111] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:border-yellow-500/50 outline-none transition-colors"
                                         placeholder="Seu nome"
                                     />
                                 </div>
@@ -272,7 +292,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                     <input 
                                         type="text" 
                                         value={cpf} onChange={(e) => setCpf(e.target.value)}
-                                        className="w-full bg-[#111] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:border-zinc-600 outline-none transition-colors"
+                                        className="w-full bg-[#111] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:border-yellow-500/50 outline-none transition-colors"
                                         placeholder="000.000.000-00"
                                     />
                                 </div>
@@ -282,7 +302,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                 <input 
                                     type="email" 
                                     value={email} onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full bg-[#111] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:border-zinc-600 outline-none transition-colors"
+                                    className="w-full bg-[#111] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:border-yellow-500/50 outline-none transition-colors"
                                     placeholder="seu@email.com"
                                 />
                             </div>
@@ -297,10 +317,10 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
 
                         {/* Loading Spinner */}
                         {(!brickReady || isProcessing) && (
-                            <div className="absolute inset-0 bg-[#050505]/80 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center gap-3">
-                                <Loader2 className="w-8 h-8 text-white animate-spin" />
+                            <div className="absolute inset-0 bg-[#050505]/90 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center gap-3">
+                                <Loader2 className="w-8 h-8 text-yellow-500 animate-spin" />
                                 <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest animate-pulse">
-                                    {isProcessing ? 'Processando...' : 'Carregando Checkout...'}
+                                    {isProcessing ? 'Processando Pagamento...' : 'Carregando Checkout Seguro...'}
                                 </span>
                             </div>
                         )}
