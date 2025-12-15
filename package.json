@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",   "preview": "vite preview"
-  },
+    "prebuild": "npm install",   "build": "vite build",
+    "preview": "vite preview"    },
   "dependencies": {
     "@google/genai": "^1.33.0",
     "file-saver": "^2.0.5",
@@ -17,10 +17,10 @@
   },
   "devDependencies": {
     "@types/file-saver": "^2.0.7",
-    "prebuild": "npm install",
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
-    "@types/node": "^20.11.19", "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@types/node": "^20.11.19", 
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "@vitejs/plugin-react": "^4.0.3",
     "eslint": "^8.45.0",
