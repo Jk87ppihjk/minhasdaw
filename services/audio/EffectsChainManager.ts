@@ -344,7 +344,7 @@ export class EffectsChainManager {
       const context = this.ctxManager.context;
       const bufferSize = 2048; 
       const processor = context.createScriptProcessor(bufferSize, 1, 1);
-      const delayBuffer = new Float32Array(bufferSize * 4); // Increased buffer size for safety
+      const delayBuffer = new Float32Array(bufferSize * 4);
       let writePos = 0;
       let phaseMain = 0;
       let currentPitchFactor = 1.0;
@@ -377,8 +377,8 @@ export class EffectsChainManager {
               let ratio = targetFreq / pitch;
               if (ratio > 2.0) ratio = 2.0; if (ratio < 0.5) ratio = 0.5;
               
-              // Only update target if significantly different to avoid jitter
-              if (Math.abs(1.0 - ratio) > 0.015) {
+              // More strict tolerance to avoid jittering
+              if (Math.abs(1.0 - ratio) > 0.02) {
                   targetPitchFactor = ratio;
               } else {
                   targetPitchFactor = 1.0;
@@ -392,7 +392,6 @@ export class EffectsChainManager {
                   chain.tunerState.isSilence = false;
               }
           } else {
-              // Hold pitch for a few frames to prevent dropouts on brief silence/unvoiced
               holdFrameCount++;
               if (holdFrameCount > 5) {
                   targetPitchFactor = 1.0;
@@ -400,7 +399,7 @@ export class EffectsChainManager {
               }
           }
 
-          const smoothing = Math.max(0.001, currentSettings.speed * 0.05); // Reduced smoothing factor for stability
+          const smoothing = Math.max(0.002, currentSettings.speed * 0.08); 
           const grainLen = 1024; 
           const bufLen = delayBuffer.length;
 
@@ -415,7 +414,7 @@ export class EffectsChainManager {
               let readPosA = writePos - phA; while (readPosA < 0) readPosA += bufLen;
               let readPosB = writePos - phB; while (readPosB < 0) readPosB += bufLen;
               
-              // Linear Interpolation (Critical for quality)
+              // Linear Interpolation
               const idxA = Math.floor(readPosA);
               const fracA = readPosA - idxA;
               const sA1 = delayBuffer[idxA % bufLen];
@@ -428,9 +427,13 @@ export class EffectsChainManager {
               const sB2 = delayBuffer[(idxB + 1) % bufLen];
               const valB = sB1 + fracB * (sB2 - sB1);
               
-              // Triangle Window
-              let gainA = 1.0 - Math.abs((phA - grainLen/2) / (grainLen/2));
-              let gainB = 1.0 - Math.abs((phB - grainLen/2) / (grainLen/2));
+              // Hanning Window (Much Smoother than Triangle)
+              // 0.5 * (1 - cos(2*PI * phase))
+              const normA = phA / grainLen;
+              const normB = phB / grainLen;
+              
+              let gainA = 0.5 * (1.0 - Math.cos(2.0 * Math.PI * normA));
+              let gainB = 0.5 * (1.0 - Math.cos(2.0 * Math.PI * normB));
               
               output[i] = (valA * gainA) + (valB * gainB);
               

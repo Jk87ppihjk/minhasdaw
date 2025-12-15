@@ -57,8 +57,6 @@ const MobileFader: React.FC<MobileFaderProps> = ({ value, min, max, onChange, la
 
     const onTouchStart = (e: React.TouchEvent) => {
         handleInteraction(e.touches[0].clientY);
-        // Prevent scroll while dragging fader
-        // e.preventDefault(); 
     };
 
     const onTouchMove = (e: React.TouchEvent) => {
@@ -692,7 +690,7 @@ const initTune = (ctx: AudioContext, s: PocketTuneSettings) => {
             }
         }
 
-        const smoothing = Math.max(0.001, set.speed * 0.05); 
+        const smoothing = Math.max(0.002, set.speed * 0.08); 
         const grainLen = 1024;
         const bufLen = delayBuffer.length;
 
@@ -719,8 +717,11 @@ const initTune = (ctx: AudioContext, s: PocketTuneSettings) => {
             const sB2 = delayBuffer[(idxB + 1) % bufLen];
             const valB = sB1 + fracB * (sB2 - sB1);
             
-            let gainA = 1.0 - Math.abs((phA - grainLen/2) / (grainLen/2));
-            let gainB = 1.0 - Math.abs((phB - grainLen/2) / (grainLen/2));
+            // Hanning Window
+            const normA = phA / grainLen;
+            const normB = phB / grainLen;
+            let gainA = 0.5 * (1.0 - Math.cos(2.0 * Math.PI * normA));
+            let gainB = 0.5 * (1.0 - Math.cos(2.0 * Math.PI * normB));
             
             output[i] = (valA * gainA) + (valB * gainB);
             
