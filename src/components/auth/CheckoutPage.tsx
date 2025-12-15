@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Check, Zap, Cloud, Infinity, ShieldCheck, Loader2, Lock, CreditCard, User, Mail, FileText, Smartphone, Copy } from 'lucide-react';
+import { Check, Zap, Cloud, Infinity, ShieldCheck, Loader2, Lock, User, Mail, FileText, Smartphone, Copy } from 'lucide-react';
 import { api } from '../../services/api';
 
 interface CheckoutPageProps {
@@ -31,6 +31,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
             const publicKey = process.env.MP_PUBLIC_KEY;
             if (!publicKey) {
                 console.error("MP_PUBLIC_KEY missing");
+                alert("Erro: Chave pública do Mercado Pago não encontrada.");
                 return;
             }
 
@@ -48,7 +49,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                 customization: {
                     visual: {
                         style: {
-                            theme: 'dark', // Force dark theme for the brick
+                            theme: 'dark', // Force dark theme for the brick to match the UI
                         }
                     },
                     paymentMethods: {
@@ -62,7 +63,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                     onSubmit: async ({ selectedPaymentMethod, formData }: any) => {
                         // Manual Validation
                         if (!fullName || !email || !cpf || cpf.length < 11) {
-                            alert("Por favor, preencha seus dados pessoais acima antes de pagar.");
+                            alert("Por favor, preencha seus dados pessoais (Nome, Email, CPF) antes de realizar o pagamento.");
                             // Reject promise to stop brick spinner
                             return new Promise((resolve, reject) => reject());
                         }
@@ -72,6 +73,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                         try {
                             const cleanCpf = cpf.replace(/\D/g, '');
                             
+                            // Construct payload matching server.js expectation
                             const payload = {
                                 transaction_amount: formData.transaction_amount,
                                 description: "Monochrome Studio Pro",
@@ -90,7 +92,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
 
                             if (data.status === 'APPROVED') {
                                 setPaymentResult({ status: 'approved' });
-                                setTimeout(() => onSuccess(), 2500);
+                                setTimeout(() => onSuccess(), 3000); // Wait 3s then enter app
                             } else if (data.status === 'PENDING' && formData.payment_method_id === 'pix') {
                                 setPaymentResult({ 
                                     status: 'pending', 
@@ -100,14 +102,14 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                     }
                                 });
                             } else {
-                                alert("Pagamento recusado ou em análise. Verifique os dados.");
+                                alert("Pagamento recusado ou em análise. Verifique os dados do cartão.");
                             }
                             setIsProcessing(false);
 
                         } catch (error: any) {
                             console.error(error);
                             setIsProcessing(false);
-                            alert("Erro ao processar: " + (error.response?.data?.message || "Falha na comunicação."));
+                            alert("Erro ao processar: " + (error.response?.data?.message || "Falha na comunicação com o servidor."));
                         }
                     },
                     onError: (error: any) => console.error("Brick Error:", error),
@@ -126,7 +128,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
     }, [user]);
 
     const handleDevActivation = async () => {
-        if (confirm("MODO DEV: Ativar assinatura grátis?")) {
+        if (confirm("MODO DEV: Ativar assinatura grátis? (Apenas para testes)")) {
             await api.post('/dev/activate-sub', { userId: user.id });
             window.location.reload();
         }
@@ -135,10 +137,10 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
     return (
         <div className="fixed inset-0 bg-[#050505] flex items-center justify-center p-4 overflow-y-auto z-[200]">
             
-            {/* Main Card */}
+            {/* Main Card Container */}
             <div className="w-full max-w-6xl grid lg:grid-cols-2 gap-0 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl bg-[#0a0a0a] min-h-[650px]">
                 
-                {/* LEFT: Value Proposition (Matches your image) */}
+                {/* LEFT: Features & Value Proposition */}
                 <div className="p-8 md:p-12 flex flex-col justify-between bg-zinc-900/30 border-r border-zinc-800 relative">
                     <div className="absolute inset-0 bg-gradient-to-br from-zinc-900/50 via-transparent to-transparent pointer-events-none" />
                     
@@ -216,10 +218,10 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                         </div>
                     </div>
 
-                    {/* Scrollable Content */}
+                    {/* Scrollable Content Area */}
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-6 relative">
                         
-                        {/* Overlay States */}
+                        {/* SUCCESS OVERLAY */}
                         {paymentResult?.status === 'approved' && (
                             <div className="absolute inset-0 bg-[#050505] z-50 flex flex-col items-center justify-center animate-in fade-in zoom-in duration-300">
                                 <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mb-4 shadow-[0_0_40px_rgba(34,197,94,0.4)]">
@@ -230,6 +232,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                             </div>
                         )}
 
+                        {/* PIX OVERLAY */}
                         {paymentResult?.status === 'pending' && paymentResult.data && (
                             <div className="absolute inset-0 bg-[#050505] z-50 flex flex-col items-center p-8 animate-in fade-in slide-in-from-bottom-10">
                                 <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
@@ -243,20 +246,20 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                                     <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-2">Copia e Cola</label>
                                     <div className="flex gap-2">
                                         <input readOnly value={paymentResult.data.qrCodeText} className="flex-1 bg-black rounded border border-zinc-800 px-3 text-xs text-zinc-300 font-mono outline-none" />
-                                        <button onClick={() => navigator.clipboard.writeText(paymentResult.data.qrCodeText)} className="p-2 hover:bg-zinc-800 rounded text-white"><Copy className="w-4 h-4" /></button>
+                                        <button onClick={() => { navigator.clipboard.writeText(paymentResult.data.qrCodeText); alert("Copiado!"); }} className="p-2 hover:bg-zinc-800 rounded text-white"><Copy className="w-4 h-4" /></button>
                                     </div>
                                 </div>
                                 <button onClick={onSuccess} className="w-full py-3 bg-white text-black font-bold text-xs uppercase tracking-widest rounded-lg hover:bg-zinc-200 transition-colors">
-                                    Já paguei
+                                    Já realizei o pagamento
                                 </button>
                             </div>
                         )}
 
-                        {/* User Form */}
+                        {/* User Inputs Section */}
                         <div className="mb-8 space-y-4">
                             <div className="flex gap-4">
                                 <div className="flex-1 space-y-1">
-                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1"><User className="w-3 h-3" /> Nome</label>
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1"><User className="w-3 h-3" /> Nome Completo</label>
                                     <input 
                                         type="text" 
                                         value={fullName} onChange={(e) => setFullName(e.target.value)}
@@ -292,17 +295,17 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ user, onSuccess }) =
                             <div className="h-[1px] bg-zinc-800 flex-1"></div>
                         </div>
 
-                        {/* Loading State */}
+                        {/* Loading Spinner */}
                         {(!brickReady || isProcessing) && (
                             <div className="absolute inset-0 bg-[#050505]/80 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center gap-3">
                                 <Loader2 className="w-8 h-8 text-white animate-spin" />
                                 <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest animate-pulse">
-                                    {isProcessing ? 'Processando...' : 'Carregando...'}
+                                    {isProcessing ? 'Processando...' : 'Carregando Checkout...'}
                                 </span>
                             </div>
                         )}
 
-                        {/* Payment Brick */}
+                        {/* Payment Brick Container */}
                         <div id="paymentBrick_container" className="min-h-[400px]"></div>
 
                     </div>
