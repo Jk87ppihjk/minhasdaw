@@ -300,7 +300,8 @@ class AudioEngineService {
 
   getRecordingPeak = (): number => {
       if (!this.recordingAnalyser || !this.recordingDataArray) return 0;
-      this.recordingAnalyser.getByteTimeDomainData(this.recordingDataArray);
+      // FIX: Cast to any to avoid Uint8Array<ArrayBufferLike> mismatch error in build
+      this.recordingAnalyser.getByteTimeDomainData(this.recordingDataArray as any);
       let max = 0;
       for (let i = 0; i < this.recordingDataArray.length; i++) {
           const val = (this.recordingDataArray[i] - 128) / 128.0;
