@@ -132,21 +132,13 @@ class AudioEngineService {
   // --- Playback Logic ---
 
   playClip = (clip: Clip, track: Track, when: number = 0, offset: number = 0) => {
-    // LOGGING START
-    console.groupCollapsed(`[AudioEngine] playClip: ${clip.name}`);
-    console.log(`Track: ${track.name} (Vol: ${track.volume}, Muted: ${track.muted})`);
-    
     if (!clip.buffer) {
-        console.warn('❌ Clip has no audio buffer loaded.');
-        console.groupEnd();
+        // Silent return if buffer isn't ready (prevents error logs during recording race conditions)
         return;
     }
     
-    console.log(`Buffer: Duration=${clip.buffer.duration.toFixed(2)}s, Channels=${clip.buffer.numberOfChannels}, Rate=${clip.buffer.sampleRate}`);
-
     // Garante que o contexto esteja rodando
     this.resumeContext();
-    console.log(`AudioContext State: ${this.context.state}, Time: ${this.context.currentTime.toFixed(2)}`);
 
     this.stopClip(clip.id);
     const chain = this.effectsManager.getOrCreateTrackChain(track);
@@ -156,17 +148,12 @@ class AudioEngineService {
     // Connect to effects chain
     try {
         source.connect(chain.input);
-        console.log('✅ Connected to effects chain input');
     } catch(err) {
-        console.error('❌ Failed connection to chain', err);
+        console.error('AudioEngine: Failed connection to chain', err);
     }
     
     const startTime = Math.max(this.context.currentTime, when);
-    if (!Number.isFinite(startTime) || !Number.isFinite(offset)) {
-        console.error('❌ Invalid time parameters:', { startTime, offset });
-        console.groupEnd();
-        return;
-    }
+    if (!Number.isFinite(startTime) || !Number.isFinite(offset)) return;
 
     const bufferDuration = clip.buffer.duration;
     const bufferOffset = Math.max(0, (clip.audioOffset || 0) + offset);
@@ -174,35 +161,24 @@ class AudioEngineService {
     // Clamp duration to prevent overrunning buffer bounds which can silence playback
     let playDuration = clip.duration - offset;
     if (bufferOffset + playDuration > bufferDuration) {
-        console.warn(`⚠️ Clamping duration. Requested: ${playDuration.toFixed(2)}, Max Avail: ${(bufferDuration - bufferOffset).toFixed(2)}`);
         playDuration = bufferDuration - bufferOffset;
     }
     
-    console.log(`Scheduling: Start=${startTime.toFixed(3)}, Offset=${bufferOffset.toFixed(3)}, Duration=${playDuration.toFixed(3)}`);
-
     // Avoid playing excessively short or negative durations
-    if (playDuration < 0.001 || bufferOffset >= bufferDuration) {
-        console.warn('❌ Skipped: Duration too short or offset out of bounds.');
-        console.groupEnd();
-        return;
-    }
+    if (playDuration < 0.001 || bufferOffset >= bufferDuration) return;
 
     this.sources.set(clip.id, source);
     
     try {
         source.start(startTime, bufferOffset, playDuration);
-        console.log('▶️ source.start() executed successfully');
     } catch (e) {
-        console.error("❌ AudioEngine: failed to start source", e);
+        console.error("AudioEngine: failed to start source", e);
     }
     
     source.onended = () => {
-      // console.log('[AudioEngine] Source ended');
       source.disconnect();
       if (this.sources.get(clip.id) === source) this.sources.delete(clip.id);
     };
-    
-    console.groupEnd();
   }
 
   stopClip = (clipId: string) => {
@@ -222,7 +198,6 @@ class AudioEngineService {
   // --- Recording Logic ---
 
   startRecording = async () => {
-    console.log('[AudioEngine] startRecording initialized...');
     this.audioChunks = [];
     try {
         await this.resumeContext();
@@ -236,8 +211,6 @@ class AudioEngineService {
             } as any
         });
         
-        console.log('[AudioEngine] Microphone stream acquired.');
-
         this._recSource = this.context.createMediaStreamSource(this.mediaStream);
         this._recDest = this.context.createMediaStreamDestination();
         this._recGain = this.context.createGain();
@@ -262,20 +235,16 @@ class AudioEngineService {
             this.recordingMimeType = ''; 
         }
         
-        console.log(`[AudioEngine] Using MIME Type: ${this.recordingMimeType}`);
-
         const options = this.recordingMimeType ? { mimeType: this.recordingMimeType } : undefined;
         this.mediaRecorder = new MediaRecorder(this._recDest.stream, options);
         this.mediaRecorder.ondataavailable = (e) => { 
             if (e.data.size > 0) {
                 this.audioChunks.push(e.data); 
-                // console.log(`[AudioEngine] Data chunk received: ${e.data.size} bytes`);
             }
         };
         this.mediaRecorder.start();
-        console.log('[AudioEngine] MediaRecorder started.');
     } catch (err) {
-        console.error('[AudioEngine] Error starting recording:', err);
+        console.error('AudioEngine: Error starting recording:', err);
         throw err;
     }
   }
@@ -293,20 +262,17 @@ class AudioEngineService {
 
   stopRecording = (): Promise<Blob> => {
       return new Promise((resolve) => {
-          console.log('[AudioEngine] stopRecording called.');
           if (this.recordingAnalyser) { this.recordingAnalyser.disconnect(); this.recordingAnalyser = null; }
           if (this._recSource) { this._recSource.disconnect(); this._recSource = null; }
           if (this._recGain) { this._recGain.disconnect(); this._recGain = null; }
           if (this._recDest) { this._recDest = null; }
 
           if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
-              console.warn('[AudioEngine] MediaRecorder was inactive or null.');
               resolve(new Blob([], { type: this.recordingMimeType || 'audio/webm' }));
               return;
           }
           this.mediaRecorder.onstop = () => {
               const blob = new Blob(this.audioChunks, { type: this.recordingMimeType || 'audio/webm' });
-              console.log(`[AudioEngine] Recording final blob created. Size: ${blob.size}, Type: ${blob.type}`);
               this.audioChunks = [];
               if (this.mediaStream) {
                   this.mediaStream.getTracks().forEach(track => track.stop());
@@ -319,30 +285,12 @@ class AudioEngineService {
       });
   }
 
-  // --- [NOVO MÉTODO ADICIONADO] ---
-  // Transforma o Blob (arquivo) em AudioBuffer (memória tocável)
   public async processRecordedBlob(blob: Blob): Promise<AudioBuffer> {
-    console.log(`[AudioEngine] processRecordedBlob: Processing blob of size ${blob.size}`);
-    
     if (blob.size === 0) {
-        console.error('[AudioEngine] Recorded blob is empty. No audio captured.');
         throw new Error("Empty recording blob");
     }
-
-    // 1. Converte Blob -> ArrayBuffer
     const arrayBuffer = await blob.arrayBuffer();
-    console.log(`[AudioEngine] Converted to ArrayBuffer. Length: ${arrayBuffer.byteLength}`);
-    
-    // 2. Decodifica ArrayBuffer -> AudioBuffer
-    // Usa o método decodeAudioData que você já tinha na classe
-    try {
-        const audioBuffer = await this.decodeAudioData(arrayBuffer);
-        console.log(`[AudioEngine] Decoded AudioBuffer. Duration: ${audioBuffer.duration}s`);
-        return audioBuffer;
-    } catch (e) {
-        console.error('[AudioEngine] Failed to decode audio data:', e);
-        throw e;
-    }
+    return await this.decodeAudioData(arrayBuffer);
   }
 }
 

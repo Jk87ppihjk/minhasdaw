@@ -66,6 +66,13 @@ export default function App() {
   const [theme, setTheme] = useState<string>('monochrome');
   const [tracks, setTracks, undoTracks, redoTracks, canUndo, canRedo] = useUndoRedo<Track[]>([]);
   
+  // Refs for tracking state inside animation frames without stale closures
+  const tracksRef = useRef<Track[]>(tracks);
+  
+  useEffect(() => {
+      tracksRef.current = tracks;
+  }, [tracks]);
+
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -289,7 +296,17 @@ export default function App() {
                 audioOffset: 0, 
                 startTime: recordingStartTimeRef.current 
             };
-            setTracks(prev => prev.map(t => t.id === recordingTrackIdRef.current ? { ...t, clips: t.clips.map(c => c.id === recordingClipIdRef.current ? newClip : c) } : t));
+            
+            // CRITICAL FIX: Update tracksRef IMMEDIATELY before setting state.
+            // This ensures that when playback effect restarts (due to isRecording change),
+            // playActiveSegments sees the updated buffer instantly.
+            const updatedTracks = tracksRef.current.map(t => 
+                t.id === recordingTrackIdRef.current 
+                ? { ...t, clips: t.clips.map(c => c.id === recordingClipIdRef.current ? newClip : c) } 
+                : t
+            );
+            tracksRef.current = updatedTracks;
+            setTracks(updatedTracks);
         }
       } catch (error) {
           console.error("Failed to process recording:", error);
@@ -336,6 +353,16 @@ export default function App() {
 
   const handleStop = () => { if (audioState.isRecording) toggleRecord(); audioEngine.stopAll(); cancelAnimationFrame(rafRef.current); setAudioState(prev => ({ ...prev, isPlaying: false, currentTime: 0 })); };
 
+  const playActiveSegments = (startCursor: number) => {
+    if (!Number.isFinite(startCursor)) return;
+    // Use tracksRef.current to get the latest tracks state without closure staleness
+    tracksRef.current.forEach(track => track.clips.forEach(clip => {
+        if (clip.startTime + clip.duration > startCursor) {
+            audioEngine.playClip(clip, track, clip.startTime >= startCursor ? playbackAnchorTimeRef.current + clip.startTime : audioEngine.currentTime, clip.startTime >= startCursor ? 0 : startCursor - clip.startTime);
+        }
+    }));
+  };
+
   // --- Play Loop Animation ---
   useEffect(() => {
     if (audioState.isPlaying) {
@@ -355,20 +382,15 @@ export default function App() {
             if (!Number.isFinite(visualTime)) visualTime = 0;
             setAudioState(prev => ({ ...prev, currentTime: Math.max(0, visualTime) })); rafRef.current = requestAnimationFrame(loop);
         };
-        playActiveSegments(audioState.currentTime); rafRef.current = requestAnimationFrame(loop);
+        // Initial playback trigger
+        playActiveSegments(audioState.currentTime); 
+        rafRef.current = requestAnimationFrame(loop);
     } else { cancelAnimationFrame(rafRef.current); audioEngine.stopAll(); }
     return () => cancelAnimationFrame(rafRef.current);
   }, [audioState.isPlaying, audioState.loop, audioState.isRecording]); 
 
   // Sync BPM
   useEffect(() => { audioEngine.setBpm(audioState.bpm); audioEngine.setMetronomeStatus(audioState.metronomeOn); }, [audioState.bpm, audioState.metronomeOn]);
-
-  const playActiveSegments = (startCursor: number) => {
-    if (!Number.isFinite(startCursor)) return;
-    tracks.forEach(track => track.clips.forEach(clip => {
-        if (clip.startTime + clip.duration > startCursor) audioEngine.playClip(clip, track, clip.startTime >= startCursor ? playbackAnchorTimeRef.current + clip.startTime : audioEngine.currentTime, clip.startTime >= startCursor ? 0 : startCursor - clip.startTime);
-    }));
-  };
 
   const handleZoom = useCallback((direction: 'in' | 'out') => {
       setZoomLevel(prev => {
