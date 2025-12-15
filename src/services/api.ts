@@ -1,10 +1,18 @@
-
 import axios from 'axios';
 
-// Detect environment based on hostname instead of Vite's import.meta.env
-// because import.meta.env might be undefined in some CDN/runtime contexts.
-const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const API_URL = isLocalhost ? 'http://localhost:3000' : '';
+let API_URL = '';
+
+// Safe detection of environment without relying on import.meta.env.PROD
+try {
+  if (typeof window !== 'undefined') {
+     const hostname = window.location.hostname;
+     if (hostname === 'localhost' || hostname === '127.0.0.1') {
+         API_URL = 'http://localhost:3000';
+     }
+  }
+} catch (e) {
+  console.warn("Environment detection failed, defaulting to relative API path.");
+}
 
 export const api = axios.create({
     baseURL: `${API_URL}/api`,
