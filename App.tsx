@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { Music, FolderOpen, ArrowLeft, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, ArrowLeftRight, Volume2, Trash2 } from 'lucide-react';
 import saveAs from 'file-saver';
 import { audioEngine } from './services/AudioEngine';
@@ -24,6 +24,7 @@ import { Header } from './components/layout/Header';
 import { TrackList } from './components/layout/TrackList';
 import { Timeline } from './components/layout/Timeline';
 import { MixerSidebar } from './components/layout/MixerSidebar';
+import { ProjectManager } from './components/ProjectManager';
 
 // --- Constants ---
 const BASE_PX_PER_SEC = 50;
@@ -66,6 +67,11 @@ export default function App() {
   const [theme, setTheme] = useState<string>('monochrome');
   const [tracks, setTracks, undoTracks, redoTracks, canUndo, canRedo] = useUndoRedo<Track[]>([]);
   
+  // Project Management State
+  const [projectManagerOpen, setProjectManagerOpen] = useState(false);
+  const [projectManagerMode, setProjectManagerMode] = useState<'save' | 'open'>('open');
+  const [rootHandle, setRootHandle] = useState<FileSystemDirectoryHandle | null>(null);
+
   // Refs for tracking state inside animation frames without stale closures
   const tracksRef = useRef<Track[]>(tracks);
   
@@ -183,49 +189,65 @@ export default function App() {
     audioEngine.setMasterVolume(audioState.masterVolume);
   }, [tracks, audioState.isPlaying, isMonitoring, audioState.masterVolume]);
 
-  // --- FILE SYSTEM API (FL STUDIO STYLE SAVE) ---
+  // --- FILE SYSTEM API (PROJECT MANAGER) ---
   
-  const handleSaveToDisk = async () => {
+  const handleSelectRootFolder = async () => {
       try {
           if (!('showDirectoryPicker' in window)) {
-              alert("Your browser does not support the File System Access API. Please use a modern browser like Chrome, Edge, or Opera.");
+              alert("Your browser does not support the File System Access API.");
               return;
           }
-
-          // 1. Pick Directory
-          const dirHandle = await (window as any).showDirectoryPicker({
+          // Request access to a directory (The user should pick 'C:\Users\Desktop\Downloads\projeto' or similar)
+          const handle = await (window as any).showDirectoryPicker({
               mode: 'readwrite',
               startIn: 'documents'
           });
+          setRootHandle(handle);
+      } catch (err) {
+          console.warn("Folder selection cancelled or failed", err);
+      }
+  };
 
-          // 2. Project Name
-          const projectName = prompt("Nome do Projeto:", "Meu Projeto") || "Meu Projeto";
-          const projectDir = await dirHandle.getDirectoryHandle(projectName, { create: true });
+  const toggleProjectManager = (mode: 'save' | 'open') => {
+      setProjectManagerMode(mode);
+      setProjectManagerOpen(true);
+  };
 
-          setIsProcessing(true);
-          setProcessingMessage("SAVING TO DISK...");
+  const handleSaveProject = async (projectName: string) => {
+      if (!rootHandle) return;
+      setProjectManagerOpen(false);
+      setIsProcessing(true);
+      setProcessingMessage("SAVING PROJECT...");
 
-          // 3. Prepare JSON Data (Exclude blobs)
+      try {
+          // 1. Create/Get the specific project folder inside the root handle
+          // @ts-ignore
+          const projectDir = await rootHandle.getDirectoryHandle(projectName, { create: true });
+
+          // 2. Prepare JSON Data
           const projectState = {
               audioState,
               tracks: tracks.map(t => ({
                   ...t,
                   clips: t.clips.map(c => ({
                       ...c,
-                      buffer: null, // Don't save buffer to JSON
-                      blob: null,   // Don't save blob to JSON
-                      fileName: `${c.id}.wav` // Reference to external file
+                      buffer: null,
+                      blob: null,
+                      fileName: `${c.id}.wav`
                   }))
               }))
           };
 
-          // 4. Save JSON File
+          // 3. Save JSON File
+          // @ts-ignore
           const jsonHandle = await projectDir.getFileHandle('project.monochrome', { create: true });
+          // @ts-ignore
           const writable = await jsonHandle.createWritable();
           await writable.write(JSON.stringify(projectState));
           await writable.close();
 
-          // 5. Save Audio Assets
+          // 4. Save Audio Assets in 'samples' subfolder
+          // @ts-ignore
           const samplesDir = await projectDir.getDirectoryHandle('samples', { create: true });
           
           for (const track of tracks) {
@@ -233,71 +255,66 @@ export default function App() {
                   if (clip.buffer) {
                       let blobToWrite = clip.blob;
                       if (!blobToWrite) {
-                          // If blob is missing (e.g. processed audio), re-encode buffer to wav
                           blobToWrite = audioEngine.bufferToWave(clip.buffer, clip.buffer.length);
                       }
-                      
+                      // @ts-ignore
                       const fileHandle = await samplesDir.getFileHandle(`${clip.id}.wav`, { create: true });
+                      // @ts-ignore
                       const fileWritable = await fileHandle.createWritable();
                       await fileWritable.write(blobToWrite);
                       await fileWritable.close();
                   }
               }
           }
-
-          setIsProcessing(false);
-          alert("Projeto salvo com sucesso na sua pasta!");
+          
+          setTimeout(() => {
+              setIsProcessing(false);
+              alert(`Projeto "${projectName}" salvo com sucesso!`);
+          }, 500);
 
       } catch (err) {
           console.error(err);
           setIsProcessing(false);
-          // If user cancels, do nothing. If error, log it.
-          if ((err as Error).name !== 'AbortError') {
-              alert("Erro ao salvar projeto. Verifique as permissões do navegador.");
-          }
+          alert("Erro ao salvar projeto. Verifique as permissões.");
       }
   };
 
-  const handleOpenFromDisk = async () => {
+  const handleLoadProject = async (projectName: string) => {
+      if (!rootHandle) return;
+      
+      await audioEngine.resumeContext();
+      handleStop();
+      setProjectManagerOpen(false);
+      setIsProcessing(true);
+      setProcessingMessage("LOADING PROJECT...");
+
       try {
-          if (!('showDirectoryPicker' in window)) {
-              alert("Browser not supported.");
-              return;
-          }
-
-          await audioEngine.resumeContext();
-          handleStop();
-
-          // 1. Pick Directory
-          const dirHandle = await (window as any).showDirectoryPicker({
-              mode: 'read',
-              startIn: 'documents'
-          });
-
-          setIsProcessing(true);
-          setProcessingMessage("LOADING PROJECT...");
+          // 1. Get Project Folder
+          // @ts-ignore
+          const projectDir = await rootHandle.getDirectoryHandle(projectName);
 
           // 2. Load JSON
           let jsonHandle;
           try {
-              jsonHandle = await dirHandle.getFileHandle('project.monochrome');
+              // @ts-ignore
+              jsonHandle = await projectDir.getFileHandle('project.monochrome');
           } catch(e) {
-              alert("Arquivo 'project.monochrome' não encontrado nesta pasta.");
-              setIsProcessing(false);
-              return;
+              throw new Error("Arquivo de projeto inválido.");
           }
 
+          // @ts-ignore
           const file = await jsonHandle.getFile();
           const text = await file.text();
           const projectData = JSON.parse(text);
 
-          // 3. Load Audio Assets
+          // 3. Load Samples
           const loadedTracks: Track[] = [];
           let samplesDir: any;
           try {
-              samplesDir = await dirHandle.getDirectoryHandle('samples');
+              // @ts-ignore
+              samplesDir = await projectDir.getDirectoryHandle('samples');
           } catch(e) {
-              console.warn("Samples folder not found.");
+              console.warn("Samples folder missing");
           }
 
           for (const trackData of projectData.tracks) {
@@ -305,7 +322,9 @@ export default function App() {
               for (const clipData of trackData.clips) {
                   if (clipData.fileName && samplesDir) {
                       try {
+                          // @ts-ignore
                           const audioHandle = await samplesDir.getFileHandle(clipData.fileName);
+                          // @ts-ignore
                           const audioFile = await audioHandle.getFile();
                           const arrayBuffer = await audioFile.arrayBuffer();
                           
@@ -325,17 +344,16 @@ export default function App() {
               loadedTracks.push({ ...trackData, clips });
           }
 
-          setTracks(loadedTracks); 
-          setAudioState(prev => ({ ...prev, ...projectData.audioState, isPlaying: false })); 
+          setTracks(loadedTracks);
+          setAudioState(prev => ({ ...prev, ...projectData.audioState, isPlaying: false }));
           setWelcomeScreen(false);
-          setIsProcessing(false);
+          
+          setTimeout(() => setIsProcessing(false), 500);
 
       } catch (err) {
           console.error(err);
           setIsProcessing(false);
-          if ((err as Error).name !== 'AbortError') {
-              alert("Erro ao abrir projeto.");
-          }
+          alert("Erro ao abrir projeto: " + (err as Error).message);
       }
   };
 
@@ -386,12 +404,12 @@ export default function App() {
     setSelectedClipId(rightClip.id);
   };
 
-  const deleteSelectedClip = () => {
+  const deleteSelectedClip = useCallback(() => {
       if (!selectedClipId || !selectedTrackId) return;
       if (audioState.isPlaying) audioEngine.stopClip(selectedClipId);
       setTracks(prev => prev.map(t => t.id === selectedTrackId ? { ...t, clips: t.clips.filter(c => c.id !== selectedClipId) } : t));
       setSelectedClipId(null);
-  };
+  }, [selectedClipId, selectedTrackId, audioState.isPlaying, setTracks]);
 
   // --- RECORDING LOGIC ---
   const toggleRecord = async () => {
@@ -563,17 +581,56 @@ export default function App() {
   // Sync BPM
   useEffect(() => { audioEngine.setBpm(audioState.bpm); audioEngine.setMetronomeStatus(audioState.metronomeOn); }, [audioState.bpm, audioState.metronomeOn]);
 
+  // --- ZOOM & KEYBOARD SHORTCUTS ---
+
+  // 1. Smooth Exponential Zoom
   const handleZoom = useCallback((direction: 'in' | 'out') => {
       setZoomLevel(prev => {
-          const newZoom = direction === 'in' ? Math.min(5, prev + 0.2) : Math.max(0.2, prev - 0.2);
-          if (scrollContainerRef.current) {
-              const currentTime = audioEngine.currentTime > 0 ? (audioEngine.currentTime - playbackAnchorTimeRef.current) : 0;
-              const playheadX = currentTime * (BASE_PX_PER_SEC * newZoom);
-              setTimeout(() => { if (scrollContainerRef.current) scrollContainerRef.current.scrollLeft = playheadX - (scrollContainerRef.current.offsetWidth / 2); }, 0);
-          }
-          return newZoom;
+          const factor = 1.2;
+          let newZoom = direction === 'in' ? prev * factor : prev / factor;
+          return Math.max(0.1, Math.min(10, newZoom));
       });
   }, []);
+
+  // 2. Zoom Focus on Playhead (Needle)
+  useLayoutEffect(() => {
+      if (scrollContainerRef.current) {
+          const containerWidth = scrollContainerRef.current.offsetWidth;
+          const pxPerSec = BASE_PX_PER_SEC * zoomLevel;
+          // Calculate where the playhead is
+          const playheadPos = audioState.currentTime * pxPerSec;
+          // Center the view on the playhead
+          const newScroll = playheadPos - (containerWidth / 2);
+          scrollContainerRef.current.scrollLeft = Math.max(0, newScroll);
+      }
+  }, [zoomLevel]); // Trigger only on zoom change
+
+  // 3. Global Keyboard Shortcuts
+  useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+          if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+          
+          if (e.code === 'Space') {
+              e.preventDefault();
+              togglePlay();
+          }
+          if (e.code === 'Delete' || e.code === 'Backspace') {
+              if (selectedClipId && !audioState.isPlaying) {
+                  e.preventDefault();
+                  deleteSelectedClip();
+              }
+          }
+          if (e.code === 'Home' || e.code === 'Enter') {
+              e.preventDefault();
+              setAudioState(prev => ({ ...prev, currentTime: 0 }));
+              if (scrollContainerRef.current) scrollContainerRef.current.scrollLeft = 0;
+          }
+      };
+      
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [togglePlay, selectedClipId, deleteSelectedClip, audioState.isPlaying]);
+
 
   const updateTrack = (id: string, updates: Partial<Track>) => setTracks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   const updateEffects = (id: string, updates: Partial<Track['effects']>) => setTracks(prev => prev.map(t => { if (t.id === id) { const updated = { ...t, effects: { ...t.effects, ...updates } }; audioEngine.updateTrackSettings(updated); return updated; } return t; }));
@@ -716,6 +773,15 @@ export default function App() {
       
       <ReleaseNotes />
 
+      <ProjectManager 
+          isOpen={projectManagerOpen}
+          mode={projectManagerMode}
+          onClose={() => setProjectManagerOpen(false)}
+          rootHandle={rootHandle}
+          onSelectRoot={handleSelectRootFolder}
+          onConfirmAction={projectManagerMode === 'save' ? handleSaveProject : handleLoadProject}
+      />
+
       {isProcessing && (
           <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center cursor-wait animate-in fade-in duration-300">
               <div className="w-16 h-16 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin mb-6"></div>
@@ -756,7 +822,7 @@ export default function App() {
              <p className="text-lg md:text-xl text-[var(--text-muted)] font-light tracking-widest mb-12 uppercase">Professional Web DAW</p>
              <div className="flex flex-col md:flex-row gap-4 w-full max-w-md">
                  <button onClick={() => setWelcomeScreen(false)} className="flex-1 px-8 py-4 bg-[var(--text-main)] text-[var(--bg-main)] font-bold tracking-widest hover:bg-[var(--text-muted)] hover:text-white transition-colors shadow-2xl uppercase">Enter Studio</button>
-                 <button onClick={handleOpenFromDisk} className="flex-1 px-8 py-4 border border-[var(--text-main)] text-[var(--text-main)] font-bold tracking-widest hover:bg-[var(--text-main)] hover:text-black transition-colors shadow-2xl uppercase cursor-pointer flex items-center justify-center gap-2">
+                 <button onClick={() => toggleProjectManager('open')} className="flex-1 px-8 py-4 border border-[var(--text-main)] text-[var(--text-main)] font-bold tracking-widest hover:bg-[var(--text-main)] hover:text-black transition-colors shadow-2xl uppercase cursor-pointer flex items-center justify-center gap-2">
                     <FolderOpen className="w-5 h-5" /> Open Project
                  </button>
              </div>
@@ -797,7 +863,9 @@ export default function App() {
         isMonitoring={isMonitoring} toggleMonitoring={toggleMonitoring}
         undoTracks={undoTracks} redoTracks={redoTracks} canUndo={canUndo} canRedo={canRedo} 
         
-        saveProjectToDisk={handleSaveToDisk} openProjectFromDisk={handleOpenFromDisk} exportWav={exportWav}
+        saveProjectToDisk={() => toggleProjectManager('save')} 
+        openProjectFromDisk={() => toggleProjectManager('open')} 
+        exportWav={exportWav}
         
         toggleTheme={toggleTheme} toggleFullScreen={toggleFullScreen} isFullScreen={isFullScreen}
         isTrackListOpen={isTrackListOpen} setIsTrackListOpen={setIsTrackListOpen} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen}
