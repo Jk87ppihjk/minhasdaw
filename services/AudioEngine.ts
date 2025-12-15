@@ -1,4 +1,3 @@
-
 import { Track, Clip, EffectSettings } from '../types';
 import { AudioContextManager } from './audio/AudioContextManager';
 import { AudioProcessor } from './audio/AudioProcessor';
@@ -45,7 +44,11 @@ class AudioEngineService {
   get currentTime() { return this.ctxManager.currentTime; }
   resumeContext = () => this.ctxManager.resumeContext();
   setMasterVolume = (val: number) => this.ctxManager.setMasterVolume(val);
-  decodeAudioData = (buffer: ArrayBuffer) => this.ctxManager.decodeAudioData(buffer);
+  
+  // Decodificação (Essencial para o áudio gravado tocar)
+  decodeAudioData = async (buffer: ArrayBuffer) => {
+      return await this.ctxManager.decodeAudioData(buffer);
+  }
   
   // Processing Proxies
   applyFade = (b: AudioBuffer, t: 'in' | 'out', d: number) => this.audioProcessor.applyFade(b, t, d);
@@ -129,7 +132,10 @@ class AudioEngineService {
   // --- Playback Logic ---
 
   playClip = (clip: Clip, track: Track, when: number = 0, offset: number = 0) => {
-    if (!clip.buffer) return;
+    if (!clip.buffer) {
+        console.warn('Tentativa de tocar Clip sem buffer de áudio carregado.');
+        return;
+    }
     this.stopClip(clip.id);
     const chain = this.effectsManager.getOrCreateTrackChain(track);
     const source = this.context.createBufferSource();
@@ -169,20 +175,7 @@ class AudioEngineService {
 
   // --- Recording Logic ---
 
-  /**
-   * Converte o Blob gravado em um AudioBuffer tocável.
-   * Útil para garantir que o áudio gravado (comprimido) seja decodificado corretamente para reprodução.
-   */
-  public async processRecordedBlob(blob: Blob): Promise<AudioBuffer> {
-    const arrayBuffer = await blob.arrayBuffer();
-    return await this.ctxManager.decodeAudioData(arrayBuffer);
-  }
-
-  /**
-   * Inicia a gravação.
-   * @param enableMonitoring Se true, o áudio do microfone será reproduzido nas caixas de som/fone.
-   */
-  startRecording = async (enableMonitoring: boolean = true) => {
+  startRecording = async () => {
     this.audioChunks = [];
     try {
         await this.resumeContext();
@@ -196,41 +189,31 @@ class AudioEngineService {
             } as any
         });
         
-        // --- Setup Graph ---
         this._recSource = this.context.createMediaStreamSource(this.mediaStream);
         this._recDest = this.context.createMediaStreamDestination();
         this._recGain = this.context.createGain();
         this._recGain.gain.value = 1.0;
 
-        // Conexão: Source -> Gain
         this._recSource.connect(this._recGain);
-        
-        // Conexão: Gain -> Destination (para o MediaRecorder gravar)
         this._recGain.connect(this._recDest);
 
-        // --- Monitoramento (Ouvir enquanto grava) ---
-        if (enableMonitoring) {
-            // Conecta ao Master Gain para ouvir o que está sendo gravado
-            this._recGain.connect(this.ctxManager.masterGain);
-        }
-
-        // --- Visuals ---
+        // Visuals
         this.recordingAnalyser = this.context.createAnalyser();
         this.recordingAnalyser.fftSize = 256; 
         this.recordingDataArray = new Uint8Array(this.recordingAnalyser.frequencyBinCount);
         this._recGain.connect(this.recordingAnalyser);
 
-        // --- Codec Selection (Prioridade MP4 para compatibilidade, depois WebM) ---
-        if (MediaRecorder.isTypeSupported('audio/mp4')) {
-            this.recordingMimeType = 'audio/mp4'; 
-        } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
             this.recordingMimeType = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+            this.recordingMimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            this.recordingMimeType = 'audio/mp4'; 
         } else {
-            this.recordingMimeType = 'audio/webm'; 
+            this.recordingMimeType = ''; 
         }
 
         const options = this.recordingMimeType ? { mimeType: this.recordingMimeType } : undefined;
-        // Importante: Gravar o stream do destino (Web Audio), não o stream bruto
         this.mediaRecorder = new MediaRecorder(this._recDest.stream, options);
         this.mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) this.audioChunks.push(e.data); };
         this.mediaRecorder.start();
@@ -253,36 +236,18 @@ class AudioEngineService {
 
   stopRecording = (): Promise<Blob> => {
       return new Promise((resolve) => {
+          if (this.recordingAnalyser) { this.recordingAnalyser.disconnect(); this.recordingAnalyser = null; }
+          if (this._recSource) { this._recSource.disconnect(); this._recSource = null; }
+          if (this._recGain) { this._recGain.disconnect(); this._recGain = null; }
+          if (this._recDest) { this._recDest = null; }
+
           if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
-              // Cleanup force
-              if (this.recordingAnalyser) { this.recordingAnalyser.disconnect(); this.recordingAnalyser = null; }
-              if (this._recGain) { this._recGain.disconnect(); this._recGain = null; }
-              if (this._recSource) { this._recSource.disconnect(); this._recSource = null; }
-              this._recDest = null;
-              
               resolve(new Blob([], { type: this.recordingMimeType || 'audio/webm' }));
               return;
           }
-          
           this.mediaRecorder.onstop = () => {
               const blob = new Blob(this.audioChunks, { type: this.recordingMimeType || 'audio/webm' });
               this.audioChunks = [];
-              
-              // Limpeza rigorosa dos nós de áudio para parar o monitoramento e liberar memória
-              if (this.recordingAnalyser) { 
-                  this.recordingAnalyser.disconnect(); 
-                  this.recordingAnalyser = null; 
-              }
-              if (this._recGain) { 
-                  this._recGain.disconnect(); // Desconecta de TODOS os destinos (Gravador e Master)
-                  this._recGain = null; 
-              }
-              if (this._recSource) { 
-                  this._recSource.disconnect(); 
-                  this._recSource = null; 
-              }
-              this._recDest = null;
-
               if (this.mediaStream) {
                   this.mediaStream.getTracks().forEach(track => track.stop());
                   this.mediaStream = null;
@@ -292,6 +257,16 @@ class AudioEngineService {
           };
           this.mediaRecorder.stop();
       });
+  }
+
+  // --- [NOVO MÉTODO ADICIONADO] ---
+  // Transforma o Blob (arquivo) em AudioBuffer (memória tocável)
+  public async processRecordedBlob(blob: Blob): Promise<AudioBuffer> {
+    // 1. Converte Blob -> ArrayBuffer
+    const arrayBuffer = await blob.arrayBuffer();
+    // 2. Decodifica ArrayBuffer -> AudioBuffer
+    // Usa o método decodeAudioData que você já tinha na classe
+    return await this.decodeAudioData(arrayBuffer);
   }
 }
 

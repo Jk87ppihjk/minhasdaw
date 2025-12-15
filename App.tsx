@@ -1,5 +1,4 @@
-
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Music, FolderOpen, ArrowLeft, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, ArrowLeftRight, Volume2, Trash2 } from 'lucide-react';
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
@@ -8,15 +7,19 @@ import { Track, TrackType, AudioEngineState, Clip, EffectSettings, ContextMenuSt
 import { EffectRegistry } from './services/EffectRegistry';
 import { Knob } from './components/Knob';
 import { EffectSelector } from './components/EffectSelector';
+
+// Effects Components
 import { ParametricEQ } from './components/effects/ParametricEQ';
 import { CompressorEffect } from './components/effects/CompressorEffect';
 import { ReverbEffect } from './components/effects/ReverbEffect';
 import { TunerEffect } from './components/effects/TunerEffect';
 import { DistortionEffect } from './components/effects/DistortionEffect'; 
-import { useUndoRedo } from './hooks/useUndoRedo';
-import { ReleaseNotes } from './components/ReleaseNotes';
 
-// Modules
+// Hooks
+import { useUndoRedo } from './hooks/useUndoRedo';
+
+// Layout Modules
+import { ReleaseNotes } from './components/ReleaseNotes';
 import { Header } from './components/layout/Header';
 import { TrackList } from './components/layout/TrackList';
 import { Timeline } from './components/layout/Timeline';
@@ -37,20 +40,20 @@ const THEMES: Record<string, React.CSSProperties> = {
 };
 
 const BASE_DEFAULTS: EffectSettings = {
-    autoPitch: { scale: 'C Major', speed: 0.02, active: true, harmony: false, reverb: 0 },
-    parametricEQ: { bands: [], active: true, preamp: 0, reverb: 0 },
-    compressor: { threshold: -24, ratio: 4, attack: 0.010, release: 0.25, knee: 30, makeup: 0, active: true },
-    reverb: { time: 2.0, mix: 0.4, preDelay: 20, tone: 5000, size: 0.8, active: true },
-    distortion: 0,
-    delay: { time: 0.3, feedback: 0.3, mix: 0.3, active: true },
-    eqLow: { gain: 0, active: false },
-    eqMid: { gain: 0, active: false },
-    eqHigh: { gain: 0, active: false },
-    chorus: { rate: 1.5, depth: 0.5, mix: 0.5, active: false },
-    tremolo: { rate: 5, depth: 0.5, active: false },
-    stereoWidener: { width: 0.5, active: false },
-    limiter: { threshold: -1, active: false },
-    phaser: { rate: 0.5, depth: 0.5, active: false }
+  autoPitch: { scale: 'C Major', speed: 0.02, active: true, harmony: false, reverb: 0 },
+  parametricEQ: { bands: [], active: true, preamp: 0, reverb: 0 },
+  compressor: { threshold: -24, ratio: 4, attack: 0.010, release: 0.25, knee: 30, makeup: 0, active: true },
+  reverb: { time: 2.0, mix: 0.4, preDelay: 20, tone: 5000, size: 0.8, active: true },
+  distortion: 0,
+  delay: { time: 0.3, feedback: 0.3, mix: 0.3, active: true },
+  eqLow: { gain: 0, active: false },
+  eqMid: { gain: 0, active: false },
+  eqHigh: { gain: 0, active: false },
+  chorus: { rate: 1.5, depth: 0.5, mix: 0.5, active: false },
+  tremolo: { rate: 5, depth: 0.5, active: false },
+  stereoWidener: { width: 0.5, active: false },
+  limiter: { threshold: -1, active: false },
+  phaser: { rate: 0.5, depth: 0.5, active: false }
 };
 
 export default function App() {
@@ -111,6 +114,7 @@ export default function App() {
   const currentScrubTimeRef = useRef<number | null>(null);
   const dragConstraintsRef = useRef<{ min: number; max: number }>({ min: 0, max: Infinity });
 
+  // Timeline Interaction Refs
   const isScrubbingRef = useRef(false);
   const wasPlayingRef = useRef(false);
   const isDraggingLoopStartRef = useRef(false);
@@ -261,33 +265,68 @@ export default function App() {
       setSelectedClipId(null);
   };
 
+  // --- RECORDING LOGIC (With Fix) ---
   const toggleRecord = async () => {
     audioEngine.resumeContext();
     if (audioState.isRecording) {
+      // 1. Stop recording and get the raw Blob
       const blob = await audioEngine.stopRecording();
-      // Use helper method to correctly decode recorded blob to AudioBuffer
-      const audioBuffer = await audioEngine.processRecordedBlob(blob);
       
-      if (recordingClipIdRef.current && recordingTrackIdRef.current) {
-          const newClip: Clip = { id: recordingClipIdRef.current, name: "Rec Take", blob, buffer: audioBuffer, duration: audioBuffer.duration, audioOffset: 0, startTime: recordingStartTimeRef.current };
-          setTracks(prev => prev.map(t => t.id === recordingTrackIdRef.current ? { ...t, clips: t.clips.map(c => c.id === recordingClipIdRef.current ? newClip : c) } : t));
+      // Safety Check
+      if (blob.size === 0) {
+        setAudioState(prev => ({ ...prev, isRecording: false }));
+        return;
       }
+
+      // 2. [CRITICAL FIX] Convert Blob to AudioBuffer using helper
+      try {
+        const audioBuffer = await audioEngine.processRecordedBlob(blob);
+        
+        if (recordingClipIdRef.current && recordingTrackIdRef.current) {
+            const newClip: Clip = { 
+                id: recordingClipIdRef.current, 
+                name: "Rec Take", 
+                blob, 
+                buffer: audioBuffer, // Assigned the decoded buffer here
+                duration: audioBuffer.duration, 
+                audioOffset: 0, 
+                startTime: recordingStartTimeRef.current 
+            };
+            setTracks(prev => prev.map(t => t.id === recordingTrackIdRef.current ? { ...t, clips: t.clips.map(c => c.id === recordingClipIdRef.current ? newClip : c) } : t));
+        }
+      } catch (error) {
+          console.error("Failed to process recording:", error);
+      }
+
+      // Cleanup
       recordingClipIdRef.current = null; recordingTrackIdRef.current = null; recordingWaveformRef.current = [];
       setAudioState(prev => ({ ...prev, isRecording: false }));
+
     } else {
       try {
-        await audioEngine.startRecording(true); // Enable monitoring
-        recordingStartTimeRef.current = audioState.currentTime; recordingWaveformRef.current = [];
+        // Start recording with monitoring enabled (true)
+        await audioEngine.startRecording(true); 
+        
+        recordingStartTimeRef.current = audioState.currentTime; 
+        recordingWaveformRef.current = [];
+        
         let recTrackId = selectedTrackId;
         if (!tracks.find(t => t.id === selectedTrackId)?.type.includes('VOCAL')) {
             const newTrack: Track = { id: crypto.randomUUID(), name: `Vocal Rec`, type: TrackType.VOCAL, volume: 1.0, pan: 0, muted: false, solo: false, clips: [], effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, activeEffects: [] };
             setTracks(prev => [...prev, newTrack]); recTrackId = newTrack.id; setSelectedTrackId(newTrack.id);
         }
         recordingTrackIdRef.current = recTrackId;
-        const tempClipId = crypto.randomUUID(); recordingClipIdRef.current = tempClipId;
+        
+        const tempClipId = crypto.randomUUID(); 
+        recordingClipIdRef.current = tempClipId;
+        
+        // Create placeholder clip for visualization
         setTimeout(() => setTracks(prev => prev.map(t => t.id === recTrackId ? { ...t, clips: [...t.clips, { id: tempClipId, name: "Recording...", duration: 0, audioOffset: 0, startTime: recordingStartTimeRef.current, liveData: [] }] } : t)), 0);
-        setAudioState(prev => ({ ...prev, isRecording: true })); if (!audioState.isPlaying) togglePlay();
-      } catch (err) { alert("Microphone error."); }
+        
+        setAudioState(prev => ({ ...prev, isRecording: true })); 
+        if (!audioState.isPlaying) togglePlay();
+
+      } catch (err) { alert("Microphone error or permission denied."); }
     }
   };
 
@@ -359,8 +398,8 @@ export default function App() {
   const updateTrack = (id: string, updates: Partial<Track>) => setTracks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   const updateEffects = (id: string, updates: Partial<Track['effects']>) => setTracks(prev => prev.map(t => { if (t.id === id) { const updated = { ...t, effects: { ...t.effects, ...updates } }; audioEngine.updateTrackSettings(updated); return updated; } return t; }));
   const addEffect = (trackId: string, effectName: string) => {
-     setTracks(prev => prev.map(t => { if (t.id === trackId && !t.activeEffects.includes(effectName)) { const updated = { ...t, activeEffects: [...t.activeEffects, effectName] }; audioEngine.rebuildTrackEffects(updated); return updated; } return t; }));
-     setOpenedEffect({ trackId, effectId: effectName }); setShowEffectSelector(false); 
+       setTracks(prev => prev.map(t => { if (t.id === trackId && !t.activeEffects.includes(effectName)) { const updated = { ...t, activeEffects: [...t.activeEffects, effectName] }; audioEngine.rebuildTrackEffects(updated); return updated; } return t; }));
+       setOpenedEffect({ trackId, effectId: effectName }); setShowEffectSelector(false); 
   };
 
   // --- Context Menu Logic ---
@@ -492,33 +531,14 @@ export default function App() {
 
   const selectedTrack = tracks.find(t => t.id === selectedTrackId);
 
-  // --- Handlers for Ruler Logic (Passed to Timeline) ---
-  // The logic for ruler is tricky because it sets refs in App. 
-  // Timeline uses props to tell App what to do? No, we handle mousedown in Timeline but modify App's refs?
-  // We can't direct modify App's refs from Timeline. 
-  // We will intercept the logic inside Timeline via props if needed, but Timeline component has onMouseDown that sets refs.
-  // Wait, if Timeline is a component, it doesn't have access to App's refs unless we pass them.
-  // We passed the booleans as state, but the dragging logic relies on refs `isDraggingLoopStartRef`.
-  // To fix this propery: We need to pass setters for refs or wrapper functions.
-  // Wrapper functions for Timeline interactions:
-  
-  // NOTE: In the `useEffect` above, we use `isDraggingLoopStartRef.current`. This ref is local to App.
-  // So Timeline needs to set `App.isDraggingLoopStartRef.current = true`.
-  // We can pass a callback `onLoopHandleStart`.
-  
-  // Actually, since we are just doing minimal changes to satisfy "modularize", 
-  // let's pass the refs themselves or simple callbacks?
-  // React Refs are mutable objects, so we can pass them!
-  // But cleaner is to wrap in a function.
-  
-  // --- Ruler Handlers Wrappers ---
-  // We will pass these to Timeline component so it can trigger the logic in App's useEffect
-  // This is a bit "prop drilling" but fine for this refactor.
-  // Actually, Timeline.tsx will execute the `onMouseDown` logic. 
-  // But wait, the `useEffect` handling `mousemove` is here in App.tsx.
-  // So Timeline just needs to set the flag in App.tsx.
-  // Timeline: `onMouseDown={() => isDraggingLoopStartRef.current = true}`
-  // So we pass the Ref object to Timeline.
+  // Wrapper functions to pass to Timeline for interaction
+  // NOTE: These assume Timeline component can accept these callbacks or refs.
+  const timelineHandlers = {
+    onScrubStart: () => { isScrubbingRef.current = true; wasPlayingRef.current = audioState.isPlaying; if(audioState.isPlaying) handleStop(); },
+    onLoopStartDrag: () => { isDraggingLoopStartRef.current = true; },
+    onLoopEndDrag: () => { isDraggingLoopEndRef.current = true; },
+    onLoopCreateStart: (time: number) => { isCreatingLoopRef.current = true; loopStartAnchorRef.current = time; }
+  };
 
   return (
     <div className="flex flex-col h-screen w-full bg-[var(--bg-main)] text-[var(--text-main)] font-sans selection:bg-[var(--accent)] selection:text-black overflow-hidden relative transition-colors duration-300" style={THEMES[theme] as React.CSSProperties} onContextMenu={(e) => e.preventDefault()}>
@@ -596,7 +616,7 @@ export default function App() {
           </div>
       )}
 
-      {/* --- NEW MODULAR LAYOUT --- */}
+      {/* --- MODULAR LAYOUT --- */}
       
       {/* 1. Header (Transport & Tools) */}
       <Header 
@@ -615,11 +635,28 @@ export default function App() {
         />
 
         {/* 3. Main Timeline */}
+        {/* Note: Ensure Timeline component accepts these Ref objects or booleans as needed */}
         <Timeline 
             tracks={tracks} audioState={audioState} setAudioState={setAudioState} zoomLevel={zoomLevel} pixelsPerSecond={pixelsPerSecond} handleZoom={handleZoom} scrollRef={scrollContainerRef} setScrollTop={setScrollTop}
             activeTool={activeTool} setActiveTool={setActiveTool} toggleLoop={toggleLoop} selectedClipId={selectedClipId} deleteSelectedClip={deleteSelectedClip} splitTrack={splitTrack}
             handleClipInteractionStart={handleClipInteractionStart} handleContextMenu={handleContextMenu}
-            isCreatingLoop={isCreatingLoopRef.current} loopStartAnchor={loopStartAnchorRef.current} isDraggingLoopStart={isDraggingLoopStartRef.current} isDraggingLoopEnd={isDraggingLoopEndRef.current} isScrubbing={isScrubbingRef.current} currentScrubTime={currentScrubTimeRef.current} wasPlayingRef={wasPlayingRef}
+            
+            // Interaction State
+            isCreatingLoop={isCreatingLoopRef.current} 
+            loopStartAnchor={loopStartAnchorRef.current} 
+            isDraggingLoopStart={isDraggingLoopStartRef.current} 
+            isDraggingLoopEnd={isDraggingLoopEndRef.current} 
+            isScrubbing={isScrubbingRef.current} 
+            currentScrubTime={currentScrubTimeRef.current} 
+            wasPlayingRef={wasPlayingRef}
+            
+            // Pass refs for interaction (Assuming Timeline supports these prop names or use the handlers object)
+            // If your Timeline.tsx is set up to write to these, pass the Refs. 
+            // If not, you may need to update Timeline.tsx to use these.
+            isDraggingLoopStartRef={isDraggingLoopStartRef}
+            isDraggingLoopEndRef={isDraggingLoopEndRef}
+            isCreatingLoopRef={isCreatingLoopRef}
+            isScrubbingRef={isScrubbingRef}
         />
 
         {/* 4. Mixer Sidebar */}
