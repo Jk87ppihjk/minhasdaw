@@ -71,6 +71,7 @@ export default function App() {
   const [projectManagerOpen, setProjectManagerOpen] = useState(false);
   const [projectManagerMode, setProjectManagerMode] = useState<'save' | 'open'>('open');
   const [rootHandle, setRootHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  const [currentProjectName, setCurrentProjectName] = useState<string | null>(null);
 
   // Refs for tracking state inside animation frames without stale closures
   const tracksRef = useRef<Track[]>(tracks);
@@ -267,6 +268,9 @@ export default function App() {
               }
           }
           
+          // UPDATE CURRENT PROJECT NAME
+          setCurrentProjectName(projectName);
+
           setTimeout(() => {
               setIsProcessing(false);
               alert(`Projeto "${projectName}" salvo com sucesso!`);
@@ -346,6 +350,9 @@ export default function App() {
 
           setTracks(loadedTracks);
           setAudioState(prev => ({ ...prev, ...projectData.audioState, isPlaying: false }));
+          
+          // UPDATE CURRENT PROJECT NAME
+          setCurrentProjectName(projectName);
           setWelcomeScreen(false);
           
           setTimeout(() => setIsProcessing(false), 500);
@@ -354,6 +361,23 @@ export default function App() {
           console.error(err);
           setIsProcessing(false);
           alert("Erro ao abrir projeto: " + (err as Error).message);
+      }
+  };
+
+  // --- SMART SAVE LOGIC ---
+  const handleQuickSave = () => {
+      // 1. Se não tem pasta raiz definida, forçar abrir gerenciador
+      if (!rootHandle) {
+          toggleProjectManager('save');
+          return;
+      }
+
+      // 2. Se já tem nome, salva direto (Quick Save)
+      if (currentProjectName) {
+          handleSaveProject(currentProjectName);
+      } else {
+          // 3. Se não tem nome (primeira vez), abre gerenciador para nomear (Save As)
+          toggleProjectManager('save');
       }
   };
 
@@ -863,12 +887,14 @@ export default function App() {
         isMonitoring={isMonitoring} toggleMonitoring={toggleMonitoring}
         undoTracks={undoTracks} redoTracks={redoTracks} canUndo={canUndo} canRedo={canRedo} 
         
-        saveProjectToDisk={() => toggleProjectManager('save')} 
+        saveProjectToDisk={handleQuickSave} 
         openProjectFromDisk={() => toggleProjectManager('open')} 
         exportWav={exportWav}
         
         toggleTheme={toggleTheme} toggleFullScreen={toggleFullScreen} isFullScreen={isFullScreen}
         isTrackListOpen={isTrackListOpen} setIsTrackListOpen={setIsTrackListOpen} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen}
+        
+        currentProjectName={currentProjectName}
       />
 
       <div className="flex flex-1 overflow-hidden relative">

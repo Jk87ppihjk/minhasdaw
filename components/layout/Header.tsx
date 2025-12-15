@@ -37,6 +37,9 @@ interface HeaderProps {
   setIsTrackListOpen: (v: boolean) => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (v: boolean) => void;
+  
+  // Project State
+  currentProjectName?: string | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -45,7 +48,8 @@ export const Header: React.FC<HeaderProps> = ({
   undoTracks, redoTracks, canUndo, canRedo, 
   saveProjectToDisk, openProjectFromDisk, exportWav,
   toggleTheme, toggleFullScreen, isFullScreen,
-  isTrackListOpen, setIsTrackListOpen, isSidebarOpen, setIsSidebarOpen
+  isTrackListOpen, setIsTrackListOpen, isSidebarOpen, setIsSidebarOpen,
+  currentProjectName
 }) => {
   return (
     <header className="h-16 border-b border-[var(--border-color)] flex items-center justify-between px-4 bg-[var(--bg-panel)] shrink-0 z-40 shadow-md relative">
@@ -61,7 +65,10 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="w-8 h-8 bg-[var(--accent)] rounded flex items-center justify-center shadow-lg hidden md:flex border border-zinc-700">
             <Music className="text-[var(--bg-main)] w-5 h-5 fill-current" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight hidden md:block text-[var(--text-main)] font-sans">MONOCHROME</h1>
+          <div className="flex flex-col justify-center hidden md:flex">
+              <h1 className="font-bold text-lg tracking-tight text-[var(--text-main)] font-sans leading-none">MONOCHROME</h1>
+              {currentProjectName && <span className="text-[10px] text-[var(--text-muted)] font-mono uppercase tracking-widest">{currentProjectName}</span>}
+          </div>
         </div>
         
         {/* Central Transport Capsule */}
@@ -146,8 +153,8 @@ export const Header: React.FC<HeaderProps> = ({
                 <button onClick={openProjectFromDisk} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" title="Open Project Folder">
                     <FolderOpen className="w-5 h-5" />
                 </button>
-                <button onClick={saveProjectToDisk} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" title="Save Project to Disk">
-                    <HardDrive className="w-5 h-5" />
+                <button onClick={saveProjectToDisk} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" title={currentProjectName ? "Save Project (Ctrl+S)" : "Save As..."}>
+                    <HardDrive className={`w-5 h-5 ${currentProjectName ? 'text-[var(--accent)]' : ''}`} />
                 </button>
                 
                 <div className="h-6 w-[1px] bg-[var(--border-color)] mx-1"></div>
