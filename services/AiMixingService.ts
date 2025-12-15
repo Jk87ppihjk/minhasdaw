@@ -2,82 +2,81 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { EffectSettings } from '../types';
 
-// Define the schema for the AI response
+// Updated Schema to return Master Track settings as well
 const mixingSchema = {
   type: Type.OBJECT,
   properties: {
-    chain: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING },
-      description: "List of effect IDs in the desired order (e.g. ['pocketGate', 'pocketComp', 'reverb'])"
+    tracks: {
+        type: Type.OBJECT,
+        description: "Dictionary of track IDs to their new settings",
+        additionalProperties: {
+            type: Type.OBJECT,
+            properties: {
+                chain: { type: Type.ARRAY, items: { type: Type.STRING } },
+                settings: { type: Type.OBJECT, additionalProperties: true } // Simplified for brevity
+            }
+        }
     },
-    settings: {
-      type: Type.OBJECT,
-      description: "Configuration object containing settings for the effects listed in the chain.",
-      properties: {
-        pocketTune: { type: Type.OBJECT, properties: { active: { type: Type.BOOLEAN }, scale: { type: Type.STRING }, speed: { type: Type.NUMBER }, amount: { type: Type.NUMBER } } },
-        pocketGate: { type: Type.OBJECT, properties: { active: { type: Type.BOOLEAN }, threshold: { type: Type.NUMBER } } },
-        pocketComp: { type: Type.OBJECT, properties: { active: { type: Type.BOOLEAN }, amount: { type: Type.NUMBER } } },
-        pocketEQ: { type: Type.OBJECT, properties: { active: { type: Type.BOOLEAN }, low: { type: Type.NUMBER }, mid: { type: Type.NUMBER }, high: { type: Type.NUMBER } } },
-        pocketDrive: { type: Type.OBJECT, properties: { active: { type: Type.BOOLEAN }, drive: { type: Type.NUMBER } } },
-        pocketSpace: { type: Type.OBJECT, properties: { active: { type: Type.BOOLEAN }, mix: { type: Type.NUMBER } } },
-        pocketWide: { type: Type.OBJECT, properties: { active: { type: Type.BOOLEAN }, width: { type: Type.NUMBER } } },
-        reverb: { type: Type.OBJECT, properties: { active: { type: Type.BOOLEAN }, time: { type: Type.NUMBER }, mix: { type: Type.NUMBER }, size: { type: Type.NUMBER }, preDelay: { type: Type.NUMBER }, tone: { type: Type.NUMBER } } },
-        delay: { type: Type.OBJECT, properties: { active: { type: Type.BOOLEAN }, time: { type: Type.NUMBER }, feedback: { type: Type.NUMBER }, mix: { type: Type.NUMBER } } },
-        compressor: { type: Type.OBJECT, properties: { active: { type: Type.BOOLEAN }, threshold: { type: Type.NUMBER }, ratio: { type: Type.NUMBER }, attack: { type: Type.NUMBER }, release: { type: Type.NUMBER }, knee: { type: Type.NUMBER }, makeup: { type: Type.NUMBER } } },
-        filterDesert: { type: Type.OBJECT, properties: { active: { type: Type.BOOLEAN }, x: { type: Type.NUMBER }, y: { type: Type.NUMBER } } },
-        tremoloDesert: { type: Type.OBJECT, properties: { active: { type: Type.BOOLEAN }, speed: { type: Type.NUMBER }, depth: { type: Type.NUMBER } } }
-      }
+    master: {
+        type: Type.OBJECT,
+        properties: {
+            chain: { type: Type.ARRAY, items: { type: Type.STRING } },
+            settings: { 
+                type: Type.OBJECT, 
+                properties: {
+                    proLimiter: { type: Type.OBJECT, properties: { threshold: { type: Type.NUMBER }, ceiling: { type: Type.NUMBER }, release: { type: Type.NUMBER }, active: { type: Type.BOOLEAN } } },
+                    multibandComp: { type: Type.OBJECT, properties: { lowThresh: { type: Type.NUMBER }, midThresh: { type: Type.NUMBER }, highThresh: { type: Type.NUMBER }, active: { type: Type.BOOLEAN } } },
+                    pocketEQ: { type: Type.OBJECT, properties: { low: { type: Type.NUMBER }, mid: { type: Type.NUMBER }, high: { type: Type.NUMBER }, active: { type: Type.BOOLEAN } } },
+                    pocketWide: { type: Type.OBJECT, properties: { width: { type: Type.NUMBER }, active: { type: Type.BOOLEAN } } }
+                }
+            }
+        }
     }
-  },
-  required: ["chain", "settings"]
+  }
 };
 
 export class AiMixingService {
   private genAI: GoogleGenAI;
 
   constructor() {
-    // Uses the API Key from environment variables as per guidelines
     this.genAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
   }
 
-  async generateMix(prompt: string, trackType: string): Promise<{ chain: string[], settings: Partial<EffectSettings> }> {
+  async generateMix(prompt: string, tracksData: { id: string, name: string, type: string, volume: number }[]): Promise<any> {
     try {
-      const model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
       const fullPrompt = `
-        You are a professional audio mixing engineer. 
-        Create a mixing chain for a "${trackType}" track based on this user request: "${prompt}".
+        You are a professional audio mixing & mastering engineer. 
         
-        Available Effects and Parameter Ranges:
-        - pocketTune (Auto-Pitch): speed (0.0-0.5, lower is faster/robotic), amount (0-100), scale (e.g. 'C Major', 'C Minor', 'chromatic')
-        - pocketGate (Noise Gate): threshold (-80 to -10 dB)
-        - pocketComp (Easy Compressor): amount (0-100)
-        - pocketEQ (3-Band): low, mid, high (-12 to 12 dB)
-        - pocketDrive (Saturation): drive (0-100)
-        - pocketSpace (Ambience Reverb): mix (0-50)
-        - pocketWide (Stereo Widener): width (0-200, 100 is normal)
-        - reverb (Pro Reverb): time (0.1-5.0s), mix (0.0-1.0), size (0.1-1.0), preDelay (0-200ms), tone (500-15000Hz)
-        - delay (Digital Delay): time (0.0-1.0s), feedback (0.0-0.9), mix (0.0-1.0)
-        - compressor (Pro Compressor): threshold (-60 to 0), ratio (1-20), attack (0-1), release (0-1), makeup (0-20)
-        - filterDesert (Filter): x (0.0-1.0, <0.45 is LowPass, >0.55 is HighPass), y (Resonance 0.0-1.0)
-        - tremoloDesert: speed (0.1-10), depth (0-1)
+        User Request: "${prompt}"
+        
+        Project State:
+        ${JSON.stringify(tracksData, null, 2)}
+
+        Task:
+        1. Analyze the volume levels and types of tracks.
+        2. Create a mixing chain for each track ID provided.
+        3. Create a MASTERING chain for the master output.
+        
+        Available Effects:
+        - Tracks: pocketTune, pocketGate, pocketComp, pocketEQ, pocketDrive, pocketSpace, pocketWide, reverb, delay, filterDesert.
+        - Master: proLimiter, multibandComp, pocketEQ, pocketWide.
 
         Rules:
-        1. Select only the necessary effects for the prompt.
-        2. Order them logically (e.g., Gate -> Tune -> EQ -> Comp -> Reverb).
-        3. Provide specific parameter values that achieve the sound description.
+        - Returns JSON with 'tracks' object (keys = track IDs) and 'master' object.
+        - For Master, typical chain: pocketEQ -> multibandComp -> proLimiter.
+        - Use "proLimiter" with threshold around -3 to -1 for mastering loudness.
       `;
 
-      const result = await model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
-        generationConfig: {
+      const result = await this.genAI.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: fullPrompt,
+        config: {
           responseMimeType: "application/json",
           responseSchema: mixingSchema
         }
       });
 
-      const text = result.response.text();
+      const text = result.text;
       if (!text) throw new Error("No response from AI");
 
       const data = JSON.parse(text);

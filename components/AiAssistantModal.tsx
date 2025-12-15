@@ -5,12 +5,12 @@ import { aiMixingService } from '../services/AiMixingService';
 import { Track } from '../types';
 
 interface AiAssistantModalProps {
-  track: Track;
-  onApplyMix: (chain: string[], settings: any) => void;
+  tracks: Track[];
+  onApplyMix: (result: any) => void;
   onClose: () => void;
 }
 
-export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({ track, onApplyMix, onClose }) => {
+export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({ tracks, onApplyMix, onClose }) => {
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,10 +22,18 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({ track, onApp
     setError(null);
 
     try {
-      const result = await aiMixingService.generateMix(prompt, track.type);
-      onApplyMix(result.chain, result.settings);
+      const tracksData = tracks.map(t => ({
+          id: t.id,
+          name: t.name,
+          type: t.type,
+          volume: t.volume
+      }));
+
+      const result = await aiMixingService.generateMix(prompt, tracksData);
+      onApplyMix(result);
       onClose();
     } catch (err) {
+      console.error(err);
       setError("Failed to generate mix. Please check your API Key or try again.");
     } finally {
       setIsLoading(false);
@@ -33,11 +41,10 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({ track, onApp
   };
 
   const suggestions = [
-    "Vocal de Trap limpo com autotune rápido",
-    "Voz de rádio vintage lo-fi",
-    "Reverb espacial etéreo e dreamy",
-    "Vocal de Rock agressivo e saturado",
-    "Bateria comprimida e com punch"
+    "Masterização de Trap alta e com punch",
+    "Mixagem Lo-Fi suave e vintage",
+    "Estilo Rock moderno com vocal na frente",
+    "Limpeza geral e maximização de volume",
   ];
 
   return (
@@ -54,10 +61,10 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({ track, onApp
                 <div className="flex flex-col gap-1">
                     <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
                         <Sparkles className="w-5 h-5 text-purple-400" />
-                        AI MIXING ASSISTANT
+                        AI MIX & MASTER
                     </h2>
                     <p className="text-xs text-zinc-500 uppercase tracking-wider">
-                        Engenharia de áudio generativa para {track.name}
+                        Engenharia de áudio generativa completa
                     </p>
                 </div>
                 <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
@@ -70,7 +77,7 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({ track, onApp
                 <textarea 
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="Descreva o som que você quer (ex: 'Vocal pop cristalino com reverb longo'...)"
+                    placeholder="Descreva o som final (ex: 'Quero um master alto, brilhante, estilo pop moderno, com os vocais bem controlados')..."
                     className="w-full h-32 bg-[#111] border border-zinc-700 rounded-lg p-4 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-purple-500 transition-colors resize-none"
                     disabled={isLoading}
                 />
@@ -110,12 +117,12 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({ track, onApp
                 {isLoading ? (
                     <>
                         <div className="w-4 h-4 border-2 border-zinc-400 border-t-black rounded-full animate-spin"></div>
-                        <span>Analisando Áudio...</span>
+                        <span>Processando Áudio...</span>
                     </>
                 ) : (
                     <>
                         <Wand2 className="w-4 h-4 text-purple-600 group-hover:text-black transition-colors" />
-                        <span>Gerar Mixagem</span>
+                        <span>Gerar Mixagem Completa</span>
                     </>
                 )}
             </button>

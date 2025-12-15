@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Play, Pause, Square, Music, Settings2, Download, Save, Palette, Menu, PanelLeftClose, PanelRightClose, Undo2, Redo2, Maximize, Minimize, MoreVertical, FolderOpen, Ear, HardDrive, LayoutGrid } from 'lucide-react';
+import { Play, Pause, Square, Music, Settings2, Download, Save, Palette, Menu, PanelLeftClose, PanelRightClose, Undo2, Redo2, Maximize, Minimize, MoreVertical, FolderOpen, Ear, HardDrive, LayoutGrid, Disc } from 'lucide-react';
 import { AudioEngineState } from '../../types';
 
 interface HeaderProps {
@@ -41,6 +41,8 @@ interface HeaderProps {
   
   // Project State
   currentProjectName?: string | null;
+  onSelectMaster: () => void;
+  selectedTrackId: string | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -50,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
   saveProjectToDisk, openProjectFromDisk, onGoHome, exportWav,
   toggleTheme, toggleFullScreen, isFullScreen,
   isTrackListOpen, setIsTrackListOpen, isSidebarOpen, setIsSidebarOpen,
-  currentProjectName
+  currentProjectName, onSelectMaster, selectedTrackId
 }) => {
   return (
     <header className="h-16 border-b border-[var(--border-color)] flex items-center justify-between px-4 bg-[var(--bg-panel)] shrink-0 z-40 shadow-md relative">
@@ -81,9 +83,14 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex flex-col items-center justify-center flex-1">
             <div className="flex items-center gap-4">
                 
-                {/* Master Volume - Moved here per request */}
+                {/* Master Volume & Selector */}
                 <div className="hidden lg:flex flex-col items-center group mr-2">
-                    <span className="text-[8px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">Master</span>
+                    <button 
+                        onClick={onSelectMaster} 
+                        className={`text-[8px] font-bold uppercase tracking-wider mb-1 px-2 py-0.5 rounded border transition-colors ${selectedTrackId === 'MASTER' ? 'bg-[var(--accent)] text-black border-[var(--accent)]' : 'text-[var(--text-muted)] border-transparent hover:border-[var(--border-color)]'}`}
+                    >
+                        Master
+                    </button>
                     <input 
                         type="range" 
                         min="0" max="1" step="0.01" 

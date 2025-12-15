@@ -4,7 +4,7 @@ import { EffectPlugin } from '../types';
 import { audioEngine } from '../services/AudioEngine';
 
 // --- HELPER UI FOR MOBILE ---
-const MobileContainer: React.FC<{ children: React.ReactNode, title: string }> = ({ children, title }) => (
+export const MobileContainer: React.FC<{ children: React.ReactNode, title: string }> = ({ children, title }) => (
     <div className="flex flex-col w-full h-full bg-[#050505] border border-[#222]">
         <div className="bg-[#0a0a0a] border-b border-[#222] py-2 text-center shrink-0">
             <span className="text-white font-black text-xs uppercase tracking-[0.2em]">{title}</span>
@@ -26,7 +26,7 @@ interface MobileFaderProps {
     color?: string;
 }
 
-const MobileFader: React.FC<MobileFaderProps> = ({ value, min, max, onChange, label, unit = "", color = "bg-white" }) => {
+export const MobileFader: React.FC<MobileFaderProps> = ({ value, min, max, onChange, label, unit = "", color = "bg-white" }) => {
     const containerRef = useRef<HTMLDivElement>(null);
 
     const handleInteraction = (clientY: number) => {

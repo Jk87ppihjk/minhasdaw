@@ -60,7 +60,10 @@ const BASE_DEFAULTS: EffectSettings = {
   tremolo: { rate: 5, depth: 0.5, active: false },
   stereoWidener: { width: 0.5, active: false },
   limiter: { threshold: -1, active: false },
-  phaser: { rate: 0.5, depth: 0.5, active: false }
+  phaser: { rate: 0.5, depth: 0.5, active: false },
+  // Master Defaults
+  proLimiter: { threshold: -3.0, ceiling: -0.1, release: 0.1, active: true },
+  multibandComp: { lowThresh: -20, midThresh: -20, highThresh: -20, active: true }
 };
 
 export default function App() {
@@ -68,6 +71,20 @@ export default function App() {
   const [theme, setTheme] = useState<string>('monochrome');
   const [tracks, setTracks, undoTracks, redoTracks, canUndo, canRedo] = useUndoRedo<Track[]>([]);
   
+  // MASTER TRACK STATE
+  const [masterTrack, setMasterTrack] = useState<Track>({
+      id: 'MASTER',
+      name: 'Master Output',
+      type: TrackType.MASTER,
+      volume: 1.0,
+      pan: 0,
+      muted: false,
+      solo: false,
+      clips: [],
+      effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() },
+      activeEffects: ['proLimiter'] // Default limiter on master
+  });
+
   // Project Management State
   const [projectManagerOpen, setProjectManagerOpen] = useState(false);
   const [projectManagerMode, setProjectManagerMode] = useState<'save' | 'open'>('open');
@@ -80,6 +97,12 @@ export default function App() {
   useEffect(() => {
       tracksRef.current = tracks;
   }, [tracks]);
+
+  // Master Track Effect Logic
+  useEffect(() => {
+      audioEngine.initializeMasterTrack(masterTrack);
+      audioEngine.rebuildTrackEffects(masterTrack);
+  }, []); // Run once on mount
 
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
@@ -190,9 +213,11 @@ export default function App() {
         audioEngine.setTrackVolume(track.id, effectiveVolume);
         if(audioState.isPlaying || isMonitoring) audioEngine.updateTrackSettings(track);
     });
-    // Master Volume Update
+    // Master Volume Update handled via AudioEngine state
     audioEngine.setMasterVolume(audioState.masterVolume);
-  }, [tracks, audioState.isPlaying, isMonitoring, audioState.masterVolume]);
+    // Update Master Track Effects real-time
+    audioEngine.updateTrackSettings(masterTrack);
+  }, [tracks, audioState.isPlaying, isMonitoring, audioState.masterVolume, masterTrack]);
 
   // --- FILE SYSTEM API (PROJECT MANAGER) ---
   
@@ -232,6 +257,7 @@ export default function App() {
           // 2. Prepare JSON Data
           const projectState = {
               audioState,
+              masterTrack: { ...masterTrack, clips: [] }, // Save master settings
               tracks: tracks.map(t => ({
                   ...t,
                   clips: t.clips.map(c => ({
@@ -353,6 +379,13 @@ export default function App() {
           }
 
           setTracks(loadedTracks);
+          // Load Master Track if exists
+          if (projectData.masterTrack) {
+              const loadedMaster = { ...masterTrack, ...projectData.masterTrack };
+              setMasterTrack(loadedMaster);
+              audioEngine.rebuildTrackEffects(loadedMaster);
+          }
+          
           setAudioState(prev => ({ ...prev, ...projectData.audioState, isPlaying: false }));
           
           // UPDATE CURRENT PROJECT NAME (This switches view from Dashboard to DAW)
@@ -374,6 +407,7 @@ export default function App() {
       
       // Reset state for new project
       setTracks([]);
+      setMasterTrack({ ...masterTrack, activeEffects: ['proLimiter'] }); // Reset master
       setAudioState({
         isPlaying: false, currentTime: 0, totalDuration: 120, isRecording: false, bpm: 120, snapToGrid: true, metronomeOn: false, masterVolume: 0.8,
         loop: { active: false, start: 0, end: 4 }
@@ -682,11 +716,39 @@ export default function App() {
   }, [togglePlay, selectedClipId, deleteSelectedClip, audioState.isPlaying]);
 
 
-  const updateTrack = (id: string, updates: Partial<Track>) => setTracks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
-  const updateEffects = (id: string, updates: Partial<Track['effects']>) => setTracks(prev => prev.map(t => { if (t.id === id) { const updated = { ...t, effects: { ...t.effects, ...updates } }; audioEngine.updateTrackSettings(updated); return updated; } return t; }));
+  const updateTrack = (id: string, updates: Partial<Track>) => {
+      if (id === 'MASTER') {
+          const updated = { ...masterTrack, ...updates };
+          setMasterTrack(updated);
+          audioEngine.updateTrackSettings(updated);
+      } else {
+          setTracks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+      }
+  };
+
+  const updateEffects = (id: string, updates: Partial<Track['effects']>) => {
+      if (id === 'MASTER') {
+          const updated = { ...masterTrack, effects: { ...masterTrack.effects, ...updates } };
+          setMasterTrack(updated);
+          audioEngine.updateTrackSettings(updated);
+      } else {
+          setTracks(prev => prev.map(t => { if (t.id === id) { const updated = { ...t, effects: { ...t.effects, ...updates } }; audioEngine.updateTrackSettings(updated); return updated; } return t; }));
+      }
+  };
+
   const addEffect = (trackId: string, effectName: string) => {
-       setTracks(prev => prev.map(t => { if (t.id === trackId && !t.activeEffects.includes(effectName)) { const updated = { ...t, activeEffects: [...t.activeEffects, effectName] }; audioEngine.rebuildTrackEffects(updated); return updated; } return t; }));
-       setOpenedEffect({ trackId, effectId: effectName }); setShowEffectSelector(false); 
+       if (trackId === 'MASTER') {
+           if (!masterTrack.activeEffects.includes(effectName)) {
+               const updated = { ...masterTrack, activeEffects: [...masterTrack.activeEffects, effectName] };
+               setMasterTrack(updated);
+               audioEngine.rebuildTrackEffects(updated);
+           }
+           setOpenedEffect({ trackId: 'MASTER', effectId: effectName });
+       } else {
+           setTracks(prev => prev.map(t => { if (t.id === trackId && !t.activeEffects.includes(effectName)) { const updated = { ...t, activeEffects: [...t.activeEffects, effectName] }; audioEngine.rebuildTrackEffects(updated); return updated; } return t; }));
+           setOpenedEffect({ trackId, effectId: effectName });
+       }
+       setShowEffectSelector(false); 
   };
 
   // --- Context Menu Logic ---
@@ -816,7 +878,7 @@ export default function App() {
       return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleEnd); window.removeEventListener('touchmove', handleTouchMove); window.removeEventListener('touchend', handleEnd); };
   }, [draggingClipId, draggingTrackId, pixelsPerSecond, audioState.isPlaying, audioState.snapToGrid, audioState.bpm, tracks, togglePlay, resizingState]);
 
-  const selectedTrack = tracks.find(t => t.id === selectedTrackId);
+  const selectedTrack = selectedTrackId === 'MASTER' ? masterTrack : tracks.find(t => t.id === selectedTrackId);
 
   // --- RENDER CONDITION: DASHBOARD VS DAW ---
   if (!currentProjectName) {
@@ -830,30 +892,40 @@ export default function App() {
       );
   }
 
-  // AI Mixing Handler
-  const handleApplyAiMix = (newChain: string[], newSettings: any) => {
-      if (!selectedTrackId) return;
-      
-      setTracks(prev => prev.map(t => {
-          if (t.id === selectedTrackId) {
-              // Merge existing settings with new AI settings
-              const mergedEffects = { ...t.effects };
-              Object.keys(newSettings).forEach(key => {
-                  mergedEffects[key] = { ...(mergedEffects[key] || {}), ...newSettings[key] };
-              });
+  // AI Mixing Handler (Updates Tracks + Master)
+  const handleApplyAiMix = (result: any) => {
+      // 1. Update Tracks
+      if (result.tracks) {
+          setTracks(prev => prev.map(t => {
+              if (result.tracks[t.id]) {
+                  const newConfig = result.tracks[t.id];
+                  const mergedEffects = { ...t.effects };
+                  if (newConfig.settings) {
+                      Object.keys(newConfig.settings).forEach(key => {
+                          mergedEffects[key] = { ...(mergedEffects[key] || {}), ...newConfig.settings[key] };
+                      });
+                  }
+                  const updated = { ...t, activeEffects: newConfig.chain || t.activeEffects, effects: mergedEffects };
+                  audioEngine.rebuildTrackEffects(updated);
+                  return updated;
+              }
+              return t;
+          }));
+      }
 
-              const updatedTrack = {
-                  ...t,
-                  activeEffects: newChain,
-                  effects: mergedEffects
-              };
-              
-              // Apply audio changes
-              audioEngine.rebuildTrackEffects(updatedTrack);
-              return updatedTrack;
+      // 2. Update Master
+      if (result.master) {
+          const newMasterConfig = result.master;
+          const mergedMasterEffects = { ...masterTrack.effects };
+          if (newMasterConfig.settings) {
+              Object.keys(newMasterConfig.settings).forEach(key => {
+                  mergedMasterEffects[key] = { ...(mergedMasterEffects[key] || {}), ...newMasterConfig.settings[key] };
+              });
           }
-          return t;
-      }));
+          const updatedMaster = { ...masterTrack, activeEffects: newMasterConfig.chain || masterTrack.activeEffects, effects: mergedMasterEffects };
+          setMasterTrack(updatedMaster);
+          audioEngine.rebuildTrackEffects(updatedMaster);
+      }
   };
 
   return (
@@ -871,9 +943,9 @@ export default function App() {
           onConfirmAction={projectManagerMode === 'save' ? handleSaveProject : handleLoadProject}
       />
 
-      {showAiModal && selectedTrack && (
+      {showAiModal && (
           <AiAssistantModal 
-              track={selectedTrack}
+              tracks={tracks}
               onApplyMix={handleApplyAiMix}
               onClose={() => setShowAiModal(false)}
           />
@@ -914,18 +986,18 @@ export default function App() {
       )}
 
       {/* FULL SCREEN EFFECT OVERLAY */}
-      {openedEffect && tracks.find(t => t.id === openedEffect.trackId) && (
+      {openedEffect && (
           <div className="fixed inset-0 z-50 bg-[var(--bg-main)] flex flex-col animate-in fade-in duration-200">
               <div className="h-16 border-b border-[var(--border-color)] flex items-center justify-between px-6 bg-[var(--bg-panel)] shrink-0">
                   <div className="flex items-center gap-4">
                       <button onClick={() => setOpenedEffect(null)} className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors uppercase text-xs font-bold tracking-widest border border-[var(--border-color)] px-3 py-1.5 rounded hover:border-[var(--text-muted)]"><ArrowLeft className="w-4 h-4" /> Back</button>
                       <div className="h-6 w-[1px] bg-[var(--border-color)]"></div>
-                      <div className="flex flex-col"><span className="text-lg font-bold text-[var(--text-main)] uppercase tracking-tight leading-none">{openedEffect.effectId}</span><span className="text-[10px] text-[var(--text-muted)] uppercase tracking-widest font-bold">{tracks.find(t => t.id === openedEffect.trackId)?.name}</span></div>
+                      <div className="flex flex-col"><span className="text-lg font-bold text-[var(--text-main)] uppercase tracking-tight leading-none">{openedEffect.effectId}</span><span className="text-[10px] text-[var(--text-muted)] uppercase tracking-widest font-bold">{openedEffect.trackId === 'MASTER' ? 'MASTER OUTPUT' : tracks.find(t => t.id === openedEffect.trackId)?.name}</span></div>
                   </div>
               </div>
               <div className="flex-1 overflow-auto md:overflow-hidden relative p-4 bg-black">
                   {(() => {
-                      const track = tracks.find(t => t.id === openedEffect.trackId)!; const fx = openedEffect.effectId; const plugin = EffectRegistry.get(fx);
+                      const track = openedEffect.trackId === 'MASTER' ? masterTrack : tracks.find(t => t.id === openedEffect.trackId)!; const fx = openedEffect.effectId; const plugin = EffectRegistry.get(fx);
                       if (plugin) { const PluginComponent = plugin.component; return <PluginComponent trackId={track.id} settings={track.effects[fx] || plugin.defaultSettings} onChange={(newSettings) => updateEffects(track.id, { [fx]: newSettings })} />; }
                       if (fx === 'parametricEQ') return <ParametricEQ trackId={track.id} settings={track.effects.parametricEQ} onChange={(newSettings) => updateEffects(track.id, { parametricEQ: { ...track.effects.parametricEQ, ...newSettings } })} />;
                       if (fx === 'compressor') return <CompressorEffect trackId={track.id} settings={track.effects.compressor} onChange={(newSettings) => updateEffects(track.id, { compressor: newSettings })} />;
@@ -956,6 +1028,8 @@ export default function App() {
         isTrackListOpen={isTrackListOpen} setIsTrackListOpen={setIsTrackListOpen} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen}
         
         currentProjectName={currentProjectName}
+        onSelectMaster={() => { setSelectedTrackId('MASTER'); setIsSidebarOpen(true); }}
+        selectedTrackId={selectedTrackId}
       />
 
       <div className="flex flex-1 overflow-hidden relative">
@@ -995,6 +1069,7 @@ export default function App() {
             isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} isMobile={isMobile} selectedTrack={selectedTrack} updateTrack={updateTrack} updateEffects={updateEffects}
             setEffectSelectorTrackId={setEffectSelectorTrackId} setShowEffectSelector={setShowEffectSelector} setOpenedEffect={setOpenedEffect} setTracks={setTracks}
             onOpenAiAssistant={() => setShowAiModal(true)}
+            setMasterTrack={setMasterTrack}
         />
 
         {/* Backdrop for Mobile Sidebar */}

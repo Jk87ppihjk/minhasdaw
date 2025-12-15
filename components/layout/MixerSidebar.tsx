@@ -19,6 +19,7 @@ interface MixerSidebarProps {
   setShowEffectSelector: (v: boolean) => void;
   setOpenedEffect: (val: { trackId: string, effectId: string } | null) => void;
   setTracks: React.Dispatch<React.SetStateAction<Track[]>>; 
+  setMasterTrack?: React.Dispatch<React.SetStateAction<Track>>; // Optional for now
   
   // AI Mixing
   onOpenAiAssistant: () => void;
@@ -26,13 +27,32 @@ interface MixerSidebarProps {
 
 export const MixerSidebar: React.FC<MixerSidebarProps> = ({
   isOpen, setIsOpen, isMobile, selectedTrack, updateTrack, updateEffects,
-  setEffectSelectorTrackId, setShowEffectSelector, setOpenedEffect, setTracks, onOpenAiAssistant
+  setEffectSelectorTrackId, setShowEffectSelector, setOpenedEffect, setTracks, setMasterTrack, onOpenAiAssistant
 }) => {
   
   const handleEditName = () => {
       if(!selectedTrack) return;
       const newName = prompt("Nome da Faixa:", selectedTrack.name);
       if (newName) updateTrack(selectedTrack.id, { name: newName });
+  };
+
+  const removeEffect = (track: Track, index: number) => {
+      if (track.id === 'MASTER' && setMasterTrack) {
+          setMasterTrack(prev => {
+              const updated = {...prev, activeEffects: prev.activeEffects.filter((_, i) => i !== index)};
+              audioEngine.rebuildTrackEffects(updated);
+              return updated;
+          });
+      } else {
+          setTracks(p => p.map(t => {
+              if (t.id === track.id) {
+                  const updatedTrack = {...t, activeEffects: t.activeEffects.filter((_, i) => i !== index)};
+                  audioEngine.rebuildTrackEffects(updatedTrack);
+                  return updatedTrack;
+              }
+              return t;
+          }));
+      }
   };
 
   return (
@@ -52,8 +72,8 @@ export const MixerSidebar: React.FC<MixerSidebarProps> = ({
             {selectedTrack ? (
                 <div className="flex-1 p-6 flex flex-col min-h-0 gap-8 overflow-y-auto custom-scrollbar pb-20 w-80 md:w-full">
                     <div className="text-center pb-6 border-b border-[var(--border-color)]">
-                        <h2 className="text-2xl font-black text-[var(--text-main)] mb-1 truncate cursor-pointer hover:text-[var(--accent)] transition-colors tracking-tight" onClick={handleEditName}>{selectedTrack.name}</h2>
-                        <span className="text-[10px] text-[var(--accent)] font-bold uppercase tracking-widest px-2 py-1 bg-[var(--accent)]/10 rounded border border-[var(--accent)]/20">{selectedTrack.type} TRACK</span>
+                        <h2 className={`text-2xl font-black mb-1 truncate cursor-pointer hover:text-[var(--accent)] transition-colors tracking-tight ${selectedTrack.id === 'MASTER' ? 'text-[var(--accent)]' : 'text-[var(--text-main)]'}`} onClick={handleEditName}>{selectedTrack.name}</h2>
+                        <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded border ${selectedTrack.id === 'MASTER' ? 'bg-[var(--accent)] text-black border-transparent' : 'text-[var(--accent)] bg-[var(--accent)]/10 border-[var(--accent)]/20'}`}>{selectedTrack.type} TRACK</span>
                     </div>
                     
                     <div className="space-y-8">
@@ -70,6 +90,7 @@ export const MixerSidebar: React.FC<MixerSidebarProps> = ({
                         <div className="flex items-center justify-between mb-2">
                             <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-1"><Disc className="w-3 h-3" /> INSERTS CHAIN</h3>
                             <div className="flex gap-2">
+                                {/* Only show AI button on regular tracks to avoid complex master logic for now, or keep it to trigger full mix */}
                                 <button 
                                     onClick={onOpenAiAssistant}
                                     className="text-[10px] bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold px-2 py-1 rounded-full flex gap-1 items-center hover:scale-105 transition-transform shadow-lg shadow-purple-900/50 border border-white/20"
@@ -100,16 +121,7 @@ export const MixerSidebar: React.FC<MixerSidebarProps> = ({
                                     </span>
                                     <div className="flex gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
                                         <button onClick={() => setOpenedEffect({ trackId: selectedTrack.id, effectId })} className="p-1 hover:bg-[var(--bg-main)] rounded"><SlidersHorizontal className="w-3 h-3 text-[var(--text-muted)]" /></button>
-                                        <button onClick={() => { 
-                                            setTracks(p => p.map(t => {
-                                                if (t.id === selectedTrack.id) {
-                                                    const updatedTrack = {...t, activeEffects: t.activeEffects.filter((_, i) => i !== index)};
-                                                    audioEngine.rebuildTrackEffects(updatedTrack);
-                                                    return updatedTrack;
-                                                }
-                                                return t;
-                                            }));
-                                        }} className="p-1 hover:bg-red-900/30 rounded"><Trash2 className="w-3 h-3 text-[var(--text-muted)] hover:text-red-500" /></button>
+                                        <button onClick={() => removeEffect(selectedTrack, index)} className="p-1 hover:bg-red-900/30 rounded"><Trash2 className="w-3 h-3 text-[var(--text-muted)] hover:text-red-500" /></button>
                                     </div>
                                 </div>
                             ))}

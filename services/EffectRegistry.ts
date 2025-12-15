@@ -1,7 +1,9 @@
+
 import { EffectPlugin } from '../types';
 import { FilterDesertPlugin } from '../plugins/FilterDesertPlugin';
 import { TremoloDesertPlugin } from '../plugins/TremoloDesertPlugin';
 import { PocketCompPlugin, PocketEQPlugin, PocketDrivePlugin, PocketSpacePlugin, PocketGatePlugin, PocketWidePlugin, PocketTunePlugin } from '../plugins/MobileSuite';
+import { ProLimiterPlugin, MultibandPlugin } from '../plugins/MasteringSuite';
 
 class EffectRegistryService {
   private plugins: Map<string, EffectPlugin> = new Map();
@@ -23,6 +25,10 @@ class EffectRegistryService {
     this.register(PocketGatePlugin);
     this.register(PocketWidePlugin);
     this.register(PocketTunePlugin);
+
+    // Mastering Series
+    this.register(ProLimiterPlugin);
+    this.register(MultibandPlugin);
   }
 
   register(plugin: EffectPlugin) {

@@ -47,7 +47,16 @@ class AudioEngineService {
   get context() { return this.ctxManager.context; }
   get currentTime() { return this.ctxManager.currentTime; }
   resumeContext = () => this.ctxManager.resumeContext();
-  setMasterVolume = (val: number) => this.ctxManager.setMasterVolume(val);
+  
+  // Initialize Master Chain on first use or update
+  initializeMasterTrack(masterTrack: Track) {
+      this.effectsManager.getOrCreateMasterChain(masterTrack);
+  }
+
+  setMasterVolume = (val: number) => {
+      // Logic handled via Master Track updates usually, but direct access to ctxManager is ok fallback
+      this.ctxManager.setMasterVolume(val);
+  }
   
   // Decodificação
   decodeAudioData = async (buffer: ArrayBuffer) => {

@@ -42,11 +42,46 @@ generateScales();
 export class EffectsChainManager {
   private ctxManager: AudioContextManager;
   private trackChains: Map<string, TrackChain> = new Map();
+  private masterChain: TrackChain | null = null; // Master is special
 
   constructor(ctxManager: AudioContextManager) {
     this.ctxManager = ctxManager;
   }
 
+  // --- MASTER CHAIN LOGIC ---
+  public getOrCreateMasterChain(masterTrack: Track): TrackChain {
+      if (this.masterChain) return this.masterChain;
+      
+      const context = this.ctxManager.context;
+      const input = context.createGain(); 
+      const effectsInput = context.createGain(); 
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 2048;
+      
+      const panner = context.createStereoPanner(); // Even master has pan technically
+      const gain = context.createGain(); // Master Volume
+
+      input.connect(effectsInput);
+      effectsInput.connect(analyser);
+      analyser.connect(panner);
+      panner.connect(gain);
+      gain.connect(this.ctxManager.masterGain);
+
+      this.masterChain = {
+          input, effectsInput, analyser, panner, gain,
+          effectNodes: {}, parametricEQNodes: []
+      };
+      
+      this.rebuildTrackEffects(masterTrack); // Same logic builds effects
+      return this.masterChain;
+  }
+
+  public getMasterInput(): GainNode {
+      if (this.masterChain) return this.masterChain.input;
+      return this.ctxManager.masterGain; // Fallback
+  }
+
+  // --- TRACK CHAIN LOGIC ---
   public getOrCreateTrackChain(track: Track): TrackChain {
     if (this.trackChains.has(track.id)) {
       return this.trackChains.get(track.id)!;
@@ -69,7 +104,13 @@ export class EffectsChainManager {
     effectsInput.connect(analyser);
     analyser.connect(panner);
     panner.connect(gain);
-    gain.connect(this.ctxManager.masterGain);
+    
+    // CHANGED: Tracks now connect to Master Chain Input instead of global masterGain
+    if (this.masterChain) {
+        gain.connect(this.masterChain.input);
+    } else {
+        gain.connect(this.ctxManager.masterGain);
+    }
 
     const chain: TrackChain = {
       input, effectsInput, analyser, panner, gain,
@@ -83,20 +124,21 @@ export class EffectsChainManager {
   }
 
   public getTrackChain(trackId: string): TrackChain | undefined {
+      if (trackId === 'MASTER') return this.masterChain || undefined;
       return this.trackChains.get(trackId);
   }
 
   public getTrackAnalyser(trackId: string): AnalyserNode | null {
-      return this.trackChains.get(trackId)?.analyser || null;
+      return this.getTrackChain(trackId)?.analyser || null;
   }
 
   public setTrackVolume(trackId: string, volume: number) {
-      const chain = this.trackChains.get(trackId);
+      const chain = this.getTrackChain(trackId);
       if (chain) chain.gain.gain.setTargetAtTime(volume, this.ctxManager.currentTime, 0.02);
   }
 
   public getCompressorReduction(trackId: string): number {
-      const chain = this.trackChains.get(trackId);
+      const chain = this.getTrackChain(trackId);
       if (!chain) return 0;
       for (const key in chain.effectNodes) {
           if (key.includes('_comp')) {
@@ -113,7 +155,7 @@ export class EffectsChainManager {
   // --- EFFECT BUILDING & UPDATING ---
 
   public rebuildTrackEffects(track: Track) {
-    const chain = this.trackChains.get(track.id);
+    const chain = track.id === 'MASTER' ? this.masterChain : this.trackChains.get(track.id);
     if (!chain) return;
 
     const context = this.ctxManager.context;
@@ -194,7 +236,6 @@ export class EffectsChainManager {
         }
         else if (effectId === 'delay' && track.effects.delay.active) {
              const outputNode = this.setupDelay(chain, track, uniqueId, currentInput);
-             // CRITICAL FIX: The chain must continue from the output of the delay (mixed signal), not just input or wet.
              currentInput = outputNode;
         }
     });
@@ -203,7 +244,7 @@ export class EffectsChainManager {
   }
 
   public updateTrackSettings(track: Track) {
-      const chain = this.trackChains.get(track.id);
+      const chain = track.id === 'MASTER' ? this.masterChain : this.trackChains.get(track.id);
       if (!chain) return;
       const context = this.ctxManager.context;
       const now = context.currentTime;

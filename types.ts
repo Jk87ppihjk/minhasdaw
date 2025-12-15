@@ -1,8 +1,10 @@
+
 import React from 'react';
 
 export enum TrackType {
   BEAT = 'BEAT',
   VOCAL = 'VOCAL',
+  MASTER = 'MASTER', // New type
 }
 
 export interface FilterBand {
@@ -28,6 +30,9 @@ export interface LegacyEffectSettings {
   stereoWidener: { width: number; active: boolean };
   limiter: { threshold: number; active: boolean };
   phaser: { rate: number; depth: number; active: boolean };
+  // New Mastering Effects
+  proLimiter: { threshold: number; ceiling: number; release: number; active: boolean };
+  multibandComp: { lowThresh: number; midThresh: number; highThresh: number; active: boolean };
 }
 
 // EffectSettings agora aceita chaves dinâmicas para os novos plugins
