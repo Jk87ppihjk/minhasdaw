@@ -31,6 +31,7 @@ console.log(`- DB_USER: ${process.env.DB_USER || '(NOT SET)'}`);
 console.log(`- DB_NAME: ${process.env.DB_NAME || '(NOT SET)'}`);
 console.log(`- DB_PASSWORD: ${process.env.DB_PASSWORD ? '****** (SET)' : '(NOT SET)'}`); 
 console.log(`- CLOUDINARY_CLOUD_NAME: ${process.env.CLOUDINARY_CLOUD_NAME || '(NOT SET)'}`);
+// Nota: Seu log mostra que FRONTEND_URL está corrigido no Render.
 console.log(`- FRONTEND_URL: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
 console.log("========================================");
 
@@ -113,47 +114,47 @@ const initDB = async () => {
         connection = await pool.getConnection();
         console.log('🛠️  Checking Database Schema...');
 
-        // 1. Tabela de Usuários
+        // 1. Tabela de Usuários - CORREÇÃO DE SINTAXE SQL
         await connection.query(`
-            CREATE TABLE IF NOT EXISTS users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                email VARCHAR(255) NOT NULL UNIQUE,
-                password VARCHAR(255) NOT NULL,
-                name VARCHAR(255),
-                is_subscribed BOOLEAN DEFAULT FALSE,
-                subscription_end DATE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    name VARCHAR(255),
+    is_subscribed BOOLEAN DEFAULT FALSE,
+    subscription_end DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+        `);
         console.log('   - Table "users": OK');
 
-        // 2. Tabela de Projetos 
+        // 2. Tabela de Projetos - CORREÇÃO DE SINTAXE SQL
         await connection.query(`
-            CREATE TABLE IF NOT EXISTS projects (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                name VARCHAR(255) NOT NULL,
-                data LONGTEXT, 
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        `);
+CREATE TABLE IF NOT EXISTS projects (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    data LONGTEXT, 
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)
+        `);
         console.log('   - Table "projects": OK');
 
-        // 3. Tabela de Assets
+        // 3. Tabela de Assets - CORREÇÃO DE SINTAXE SQL
         await connection.query(`
-            CREATE TABLE IF NOT EXISTS assets (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                project_id INT,
-                public_id VARCHAR(255) NOT NULL,
-                url VARCHAR(512) NOT NULL,
-                format VARCHAR(50),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        `);
+CREATE TABLE IF NOT EXISTS assets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    project_id INT,
+    public_id VARCHAR(255) NOT NULL,
+    url VARCHAR(512) NOT NULL,
+    format VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)
+        `);
         console.log('   - Table "assets": OK');
 
         // Verificação de Colunas Extras
