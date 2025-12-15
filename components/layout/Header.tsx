@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Play, Pause, Square, Music, Settings2, Download, Save, Palette, Menu, PanelLeftClose, PanelRightClose, Undo2, Redo2, Maximize, Minimize, MoreVertical, FolderOpen, Ear, HardDrive, LayoutGrid, Disc } from 'lucide-react';
+import { Play, Pause, Square, Music, Settings2, Download, Save, Palette, Menu, PanelLeftClose, PanelRightClose, Undo2, Redo2, Maximize, Minimize, MoreVertical, FolderOpen, Ear, HardDrive, LayoutGrid, Disc, PenTool } from 'lucide-react';
 import { AudioEngineState } from '../../types';
 
 interface HeaderProps {
@@ -38,6 +38,8 @@ interface HeaderProps {
   setIsTrackListOpen: (v: boolean) => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (v: boolean) => void;
+  isCompositionOpen?: boolean;
+  setIsCompositionOpen?: (v: boolean) => void;
   
   // Project State
   currentProjectName?: string | null;
@@ -51,7 +53,7 @@ export const Header: React.FC<HeaderProps> = ({
   undoTracks, redoTracks, canUndo, canRedo, 
   saveProjectToDisk, openProjectFromDisk, onGoHome, exportWav,
   toggleTheme, toggleFullScreen, isFullScreen,
-  isTrackListOpen, setIsTrackListOpen, isSidebarOpen, setIsSidebarOpen,
+  isTrackListOpen, setIsTrackListOpen, isSidebarOpen, setIsSidebarOpen, isCompositionOpen, setIsCompositionOpen,
   currentProjectName, onSelectMaster, selectedTrackId
 }) => {
   return (
@@ -178,9 +180,22 @@ export const Header: React.FC<HeaderProps> = ({
 
             <div className="h-6 w-[1px] bg-[var(--border-color)] mx-1 hidden md:block"></div>
             
+            {/* Composition Button */}
+            {setIsCompositionOpen && (
+                <button 
+                    onClick={() => setIsCompositionOpen(!isCompositionOpen)} 
+                    className={`p-2 border border-[var(--border-color)] rounded ${isCompositionOpen ? 'bg-[var(--bg-element)] text-[var(--text-main)]' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
+                    title="AI Composition Assistant"
+                >
+                    <PenTool className="w-4 h-4" />
+                </button>
+            )}
+
+            {/* Mixer Button */}
             <button 
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
                 className={`p-2 border border-[var(--border-color)] rounded ${isSidebarOpen ? 'bg-[var(--bg-element)] text-[var(--text-main)]' : 'text-[var(--text-muted)]'}`}
+                title="Mixer"
             >
                 {isSidebarOpen ? <PanelRightClose className="w-4 h-4" /> : <Settings2 className="w-4 h-4" />}
             </button>

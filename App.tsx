@@ -24,6 +24,7 @@ import { Header } from './components/layout/Header';
 import { TrackList } from './components/layout/TrackList';
 import { Timeline } from './components/layout/Timeline';
 import { MixerSidebar } from './components/layout/MixerSidebar';
+import { CompositionAssistant } from './components/CompositionAssistant';
 import { ProjectManager } from './components/ProjectManager';
 import { Dashboard } from './components/Dashboard';
 import { AiAssistantModal } from './components/AiAssistantModal';
@@ -110,7 +111,8 @@ export default function App() {
   const [isFullScreen, setIsFullScreen] = useState(false);
   
   // Responsive UI State
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mixer
+  const [isCompositionOpen, setIsCompositionOpen] = useState(false); // New Composition Assistant
   const [isTrackListOpen, setIsTrackListOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   
@@ -186,7 +188,7 @@ export default function App() {
     const handleResize = () => {
       const mobile = window.innerWidth < 1024;
       setIsMobile(mobile);
-      if (mobile) { setIsTrackListOpen(false); setIsSidebarOpen(false); } else { setIsTrackListOpen(true); setIsSidebarOpen(true); }
+      if (mobile) { setIsTrackListOpen(false); setIsSidebarOpen(false); setIsCompositionOpen(false); } else { setIsTrackListOpen(true); setIsSidebarOpen(true); }
     };
     handleResize(); window.addEventListener('resize', handleResize); return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -202,6 +204,17 @@ export default function App() {
 
   const toggleTheme = () => {
     setTheme('monochrome');
+  };
+  
+  // Toggle Sidebars Mutually Exclusive Logic
+  const toggleMixer = () => {
+      if (!isSidebarOpen) setIsCompositionOpen(false);
+      setIsSidebarOpen(!isSidebarOpen);
+  };
+  
+  const toggleComposition = () => {
+      if (!isCompositionOpen) setIsSidebarOpen(false);
+      setIsCompositionOpen(!isCompositionOpen);
   };
 
   // --- Real-time Mixing ---
@@ -1026,10 +1039,12 @@ export default function App() {
         exportWav={exportWav}
         
         toggleTheme={toggleTheme} toggleFullScreen={toggleFullScreen} isFullScreen={isFullScreen}
-        isTrackListOpen={isTrackListOpen} setIsTrackListOpen={setIsTrackListOpen} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen}
+        isTrackListOpen={isTrackListOpen} setIsTrackListOpen={setIsTrackListOpen} 
+        isSidebarOpen={isSidebarOpen} setIsSidebarOpen={toggleMixer} // Updated handler for mixer toggle
+        isCompositionOpen={isCompositionOpen} setIsCompositionOpen={toggleComposition} // New Props
         
         currentProjectName={currentProjectName}
-        onSelectMaster={() => { setSelectedTrackId('MASTER'); setIsSidebarOpen(true); }}
+        onSelectMaster={() => { setSelectedTrackId('MASTER'); setIsSidebarOpen(true); setIsCompositionOpen(false); }}
         selectedTrackId={selectedTrackId}
       />
 
@@ -1073,9 +1088,16 @@ export default function App() {
             setMasterTrack={setMasterTrack}
         />
 
+        {/* 5. Composition Assistant Sidebar */}
+        <CompositionAssistant 
+            isOpen={isCompositionOpen}
+            onClose={() => setIsCompositionOpen(false)}
+            isMobile={isMobile}
+        />
+
         {/* Backdrop for Mobile Sidebar */}
-        {isMobile && (isTrackListOpen || isSidebarOpen) && (
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-20" onClick={() => { setIsTrackListOpen(false); setIsSidebarOpen(false); }} />
+        {isMobile && (isTrackListOpen || isSidebarOpen || isCompositionOpen) && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-20" onClick={() => { setIsTrackListOpen(false); setIsSidebarOpen(false); setIsCompositionOpen(false); }} />
         )}
       </div>
     </div>
