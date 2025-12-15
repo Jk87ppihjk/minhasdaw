@@ -102,8 +102,6 @@ const storage = new CloudinaryStorage({
 const upload = multer({ storage: storage });
 
 // 4. External APIs
-// Use a dummy token if not set to prevent crash during initialization, 
-// but requests will fail if not configured properly.
 const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || 'TEST-TOKEN' });
 const mpPayment = new Payment(mpClient);
 
@@ -313,7 +311,7 @@ app.post('/api/assets/upload', authenticateToken, upload.single('file'), async (
     }
 });
 
-// 4. Pagamentos (PROCESSAMENTO VIA BRICK)
+// 4. Pagamentos (PROCESSAMENTO VIA BRICK - NOVO)
 app.post('/api/checkout/process_payment', authenticateToken, async (req, res) => {
     try {
         const { transaction_amount, description, payment_method_id, email, token, installments, issuer_id, identification } = req.body;
@@ -372,7 +370,7 @@ app.post('/api/checkout/process_payment', authenticateToken, async (req, res) =>
     }
 });
 
-// Rota LEGACY para preferência (Corrigida para não crashar, mantida para compatibilidade temporária)
+// Rota LEGACY para preferência (Mantida apenas para evitar 404, mas corrigida para evitar crash)
 app.post('/api/checkout/create-preference', authenticateToken, async (req, res) => {
     try {
         const frontUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -381,7 +379,7 @@ app.post('/api/checkout/create-preference', authenticateToken, async (req, res) 
             body: {
                 items: [{ title: 'Monochrome Pro Subscription', quantity: 1, unit_price: 49.90, currency_id: 'BRL' }],
                 payer: { email: req.user.email },
-                // Back URLs são obrigatórios para preferências redirecionadas
+                // BACK_URLS OBRIGATÓRIOS
                 back_urls: {
                     success: `${frontUrl}/?status=success`,
                     failure: `${frontUrl}/?status=failure`,
@@ -393,8 +391,7 @@ app.post('/api/checkout/create-preference', authenticateToken, async (req, res) 
         res.json({ init_point: result.init_point });
     } catch (e) {
         console.error("Legacy Preference Error:", e);
-        // Não crasha, apenas retorna erro
-        res.status(500).json({ message: 'Payment preference error' });
+        res.status(500).json({ message: 'Payment error' });
     }
 });
 
