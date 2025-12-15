@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import { EffectPlugin } from '../types';
 import { audioEngine } from '../services/AudioEngine';
@@ -643,6 +644,7 @@ const initTune = (ctx: AudioContext, s: PocketTuneSettings) => {
     let phaseMain = 0;
     let currentPitchFactor = 1.0;
     let targetPitchFactor = 1.0;
+    let holdFrameCount = 0;
 
     (processor as any)._settings = s;
     (processor as any)._state = { note: '--', hz: 0, active: false };
@@ -660,6 +662,7 @@ const initTune = (ctx: AudioContext, s: PocketTuneSettings) => {
 
         const pitch = autoCorrelate(input, ctx.sampleRate);
         if (pitch !== -1) {
+            holdFrameCount = 0;
             const midiNote = 12 * (Math.log(pitch / 440) / Math.log(2)) + 69;
             const correctedMidi = getScaleNote(Math.round(midiNote), set.scale);
             const targetFreq = 440 * Math.pow(2, (correctedMidi - 69) / 12);
@@ -668,19 +671,30 @@ const initTune = (ctx: AudioContext, s: PocketTuneSettings) => {
             
             let ratio = targetFreq / pitch;
             if (ratio > 2) ratio = 2; if (ratio < 0.5) ratio = 0.5;
-            if (Math.abs(1.0 - ratio) > 0.02) targetPitchFactor = ratio; else targetPitchFactor = 1.0;
+            
+            // Only update target if stable
+            if (Math.abs(1.0 - ratio) > 0.015) {
+                targetPitchFactor = ratio;
+            } else {
+                targetPitchFactor = 1.0;
+            }
             
             const amount = set.amount / 100; 
             targetPitchFactor = 1.0 + (targetPitchFactor - 1.0) * amount;
 
             (processor as any)._state = { note: targetNoteName, hz: Math.round(pitch), active: true };
         } else {
-            targetPitchFactor = 1.0;
-            (processor as any)._state = { note: '--', hz: 0, active: false };
+            // Hold pitch briefly
+            holdFrameCount++;
+            if (holdFrameCount > 5) {
+                targetPitchFactor = 1.0;
+                (processor as any)._state = { note: '--', hz: 0, active: false };
+            }
         }
 
-        const smoothing = Math.max(0.0001, set.speed * 0.1); 
+        const smoothing = Math.max(0.001, set.speed * 0.05); 
         const grainLen = 1024;
+        const bufLen = delayBuffer.length;
 
         for (let i = 0; i < input.length; i++) {
             delayBuffer[writePos] = input[i];
@@ -689,11 +703,21 @@ const initTune = (ctx: AudioContext, s: PocketTuneSettings) => {
             let phA = phaseMain % grainLen; if (phA < 0) phA += grainLen;
             let phB = (phaseMain + grainLen/2) % grainLen; if (phB < 0) phB += grainLen;
             
-            let readPosA = writePos - phA; while (readPosA < 0) readPosA += delayBuffer.length;
-            let readPosB = writePos - phB; while (readPosB < 0) readPosB += delayBuffer.length;
+            let readPosA = writePos - phA; while (readPosA < 0) readPosA += bufLen;
+            let readPosB = writePos - phB; while (readPosB < 0) readPosB += bufLen;
             
-            let valA = delayBuffer[Math.floor(readPosA) % delayBuffer.length];
-            let valB = delayBuffer[Math.floor(readPosB) % delayBuffer.length];
+            // Linear Interpolation
+            const idxA = Math.floor(readPosA);
+            const fracA = readPosA - idxA;
+            const sA1 = delayBuffer[idxA % bufLen];
+            const sA2 = delayBuffer[(idxA + 1) % bufLen];
+            const valA = sA1 + fracA * (sA2 - sA1);
+
+            const idxB = Math.floor(readPosB);
+            const fracB = readPosB - idxB;
+            const sB1 = delayBuffer[idxB % bufLen];
+            const sB2 = delayBuffer[(idxB + 1) % bufLen];
+            const valB = sB1 + fracB * (sB2 - sB1);
             
             let gainA = 1.0 - Math.abs((phA - grainLen/2) / (grainLen/2));
             let gainB = 1.0 - Math.abs((phB - grainLen/2) / (grainLen/2));
@@ -701,7 +725,7 @@ const initTune = (ctx: AudioContext, s: PocketTuneSettings) => {
             output[i] = (valA * gainA) + (valB * gainB);
             
             phaseMain += (1.0 - currentPitchFactor);
-            writePos++; if (writePos >= delayBuffer.length) writePos = 0;
+            writePos++; if (writePos >= bufLen) writePos = 0;
         }
     };
 

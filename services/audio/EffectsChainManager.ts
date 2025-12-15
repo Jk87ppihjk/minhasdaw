@@ -344,11 +344,12 @@ export class EffectsChainManager {
       const context = this.ctxManager.context;
       const bufferSize = 2048; 
       const processor = context.createScriptProcessor(bufferSize, 1, 1);
-      const delayBuffer = new Float32Array(bufferSize * 2);
+      const delayBuffer = new Float32Array(bufferSize * 4); // Increased buffer size for safety
       let writePos = 0;
       let phaseMain = 0;
       let currentPitchFactor = 1.0;
       let targetPitchFactor = 1.0;
+      let holdFrameCount = 0;
       
       (processor as any)._settings = track.effects.autoPitch;
 
@@ -357,9 +358,16 @@ export class EffectsChainManager {
           const input = e.inputBuffer.getChannelData(0);
           const output = e.outputBuffer.getChannelData(0);
           
+          if (!currentSettings.active) {
+              output.set(input);
+              if (chain.tunerState) chain.tunerState.isSilence = true;
+              return;
+          }
+
           const pitch = this.autoCorrelate(input, context.sampleRate);
           
           if (pitch !== -1) {
+              holdFrameCount = 0;
               const midiNote = 12 * (Math.log(pitch / 440) / Math.log(2)) + 69;
               const rawNoteName = NOTE_STRINGS[Math.round(midiNote) % 12];
               const correctedMidi = this.getScaleNote(Math.round(midiNote), currentSettings.scale);
@@ -368,7 +376,13 @@ export class EffectsChainManager {
               
               let ratio = targetFreq / pitch;
               if (ratio > 2.0) ratio = 2.0; if (ratio < 0.5) ratio = 0.5;
-              if (Math.abs(1.0 - ratio) > 0.02) targetPitchFactor = ratio; else targetPitchFactor = 1.0;
+              
+              // Only update target if significantly different to avoid jitter
+              if (Math.abs(1.0 - ratio) > 0.015) {
+                  targetPitchFactor = ratio;
+              } else {
+                  targetPitchFactor = 1.0;
+              }
 
               if (chain.tunerState) {
                   chain.tunerState.currentPitch = pitch;
@@ -378,32 +392,50 @@ export class EffectsChainManager {
                   chain.tunerState.isSilence = false;
               }
           } else {
-              targetPitchFactor = 1.0;
-              if (chain.tunerState) chain.tunerState.isSilence = true;
+              // Hold pitch for a few frames to prevent dropouts on brief silence/unvoiced
+              holdFrameCount++;
+              if (holdFrameCount > 5) {
+                  targetPitchFactor = 1.0;
+                  if (chain.tunerState) chain.tunerState.isSilence = true;
+              }
           }
 
-          const smoothing = Math.max(0.0001, currentSettings.speed * 0.1); 
+          const smoothing = Math.max(0.001, currentSettings.speed * 0.05); // Reduced smoothing factor for stability
           const grainLen = 1024; 
+          const bufLen = delayBuffer.length;
 
           for (let i = 0; i < input.length; i++) {
               delayBuffer[writePos] = input[i];
+              
               currentPitchFactor += (targetPitchFactor - currentPitchFactor) * smoothing;
               
               let phA = phaseMain % grainLen; if (phA < 0) phA += grainLen;
               let phB = (phaseMain + grainLen/2) % grainLen; if (phB < 0) phB += grainLen;
               
-              let readPosA = writePos - phA; while (readPosA < 0) readPosA += delayBuffer.length;
-              let readPosB = writePos - phB; while (readPosB < 0) readPosB += delayBuffer.length;
+              let readPosA = writePos - phA; while (readPosA < 0) readPosA += bufLen;
+              let readPosB = writePos - phB; while (readPosB < 0) readPosB += bufLen;
               
-              let valA = delayBuffer[Math.floor(readPosA) % delayBuffer.length];
-              let valB = delayBuffer[Math.floor(readPosB) % delayBuffer.length];
+              // Linear Interpolation (Critical for quality)
+              const idxA = Math.floor(readPosA);
+              const fracA = readPosA - idxA;
+              const sA1 = delayBuffer[idxA % bufLen];
+              const sA2 = delayBuffer[(idxA + 1) % bufLen];
+              const valA = sA1 + fracA * (sA2 - sA1);
+
+              const idxB = Math.floor(readPosB);
+              const fracB = readPosB - idxB;
+              const sB1 = delayBuffer[idxB % bufLen];
+              const sB2 = delayBuffer[(idxB + 1) % bufLen];
+              const valB = sB1 + fracB * (sB2 - sB1);
               
+              // Triangle Window
               let gainA = 1.0 - Math.abs((phA - grainLen/2) / (grainLen/2));
               let gainB = 1.0 - Math.abs((phB - grainLen/2) / (grainLen/2));
               
               output[i] = (valA * gainA) + (valB * gainB);
+              
               phaseMain += (1.0 - currentPitchFactor);
-              writePos++; if (writePos >= delayBuffer.length) writePos = 0;
+              writePos++; if (writePos >= bufLen) writePos = 0;
           }
       };
       chainNode(processor, uniqueId);
