@@ -44,7 +44,7 @@ const THEMES: Record<string, React.CSSProperties> = {
     '--text-main': '#ffffff', 
     '--text-muted': '#a1a1aa', 
     '--border-color': '#3f3f46', 
-    '--accent': '#eab308', // Amarelo Ouro para destaque profissional
+    '--accent': '#eab308', 
     '--waveform-bg': '#27272a', 
     '--waveform-wave': '#e4e4e7' 
   } as React.CSSProperties,
