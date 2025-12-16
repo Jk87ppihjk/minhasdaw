@@ -29,7 +29,6 @@ export const BeatGeneratorModal: React.FC<BeatGeneratorModalProps> = ({ onClose,
     setError(null);
 
     try {
-      // 1. Iniciar Geração
       const { data } = await api.post('/music/generate', {
         prompt: prompt,
         tags: "beat, instrumental, producer",
@@ -37,7 +36,6 @@ export const BeatGeneratorModal: React.FC<BeatGeneratorModalProps> = ({ onClose,
         instrumental: isInstrumental
       });
 
-      // A API retorna um array ou objeto dependendo da implementação, pegamos o ID
       const generatedId = Array.isArray(data.data) ? data.data[0].id : data.data.id;
       
       if (!generatedId) throw new Error("ID da tarefa não retornado.");
@@ -53,15 +51,13 @@ export const BeatGeneratorModal: React.FC<BeatGeneratorModalProps> = ({ onClose,
   };
 
   const startPolling = (id: string) => {
-    // 2. Verificar Status Periodicamente
     pollInterval.current = window.setInterval(async () => {
       try {
         const { data: songs } = await api.get('/music/my-songs');
-        // Encontra a música pelo ID do Suno
         const song = songs.find((s: any) => s.suno_id === id);
 
         if (song) {
-          if (song.status === 'complete' || song.status === 'stream') { // 'stream' para streaming parcial se suportado
+          if (song.status === 'complete' || song.status === 'stream') {
              if (song.audio_url) {
                  clearInterval(pollInterval.current!);
                  downloadAndImport(song.audio_url);
@@ -72,27 +68,22 @@ export const BeatGeneratorModal: React.FC<BeatGeneratorModalProps> = ({ onClose,
         }
       } catch (err) {
         console.error("Polling error", err);
-        // Não paramos o polling por erros de rede temporários, mas se for erro fatal...
       }
-    }, 3000); // Checa a cada 3 segundos
+    }, 3000);
   };
 
   const downloadAndImport = async (url: string) => {
     setStatus('downloading');
     try {
-        // 3. Baixar o arquivo de áudio
-        // Nota: Pode precisar de proxy se o CORS bloquear, mas geralmente URLs assinadas funcionam
         const response = await fetch(url);
         const arrayBuffer = await response.arrayBuffer();
 
         setStatus('decoding');
-        // 4. Decodificar para AudioBuffer da WebAudio API
         const audioBuffer = await audioEngine.decodeAudioData(arrayBuffer);
 
         onImport(audioBuffer, `AI Beat: ${prompt.substring(0, 15)}...`);
         setStatus('ready');
         
-        // Fecha após um breve sucesso
         setTimeout(onClose, 1000);
 
     } catch (err) {

@@ -41,7 +41,11 @@ export const TrackList: React.FC<TrackListProps> = ({
          <div className="h-10 border-b border-[var(--border-color)] bg-[var(--bg-panel)] flex flex-shrink-0 items-center justify-between px-3">
              <span className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Tracks</span>
              <div className="flex gap-2">
-                 <button onClick={onOpenBeatGen} className="bg-yellow-500/10 text-yellow-500 px-2 py-0.5 rounded text-[10px] font-bold hover:bg-yellow-500 hover:text-black border border-yellow-500/20 flex items-center gap-1 transition-colors" title="Generate with AI">
+                 <button 
+                    onClick={onOpenBeatGen} 
+                    className="bg-yellow-500/10 text-yellow-500 px-2 py-0.5 rounded text-[10px] font-bold hover:bg-yellow-500 hover:text-black border border-yellow-500/20 flex items-center gap-1 transition-colors" 
+                    title="Generate with AI"
+                 >
                     <Sparkles className="w-3 h-3" /> BEAT
                  </button>
                  <button onClick={addNewTrack} className="bg-[var(--text-main)] text-[var(--bg-main)] px-2 py-0.5 rounded text-[10px] font-bold hover:bg-[var(--accent)] hover:text-black border border-transparent">+ NEW</button>
