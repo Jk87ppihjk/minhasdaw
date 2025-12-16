@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { Music, FolderOpen, ArrowLeft, TrendingUp, Sparkles, VolumeX, Radio, Mic2, ScissorsLineDashed, ArrowLeftRight, Volume2, Trash2, LogOut, X } from 'lucide-react';
 import saveAs from 'file-saver';
-import JSZip from 'jszip'; // Import JSZip
+import JSZip from 'jszip'; 
 import { audioEngine } from './services/AudioEngine';
 import { Track, TrackType, AudioEngineState, Clip, EffectSettings, ContextMenuState } from './types';
 import { EffectRegistry } from './services/EffectRegistry';
@@ -44,7 +44,7 @@ const THEMES: Record<string, React.CSSProperties> = {
     '--text-main': '#ffffff', 
     '--text-muted': '#a1a1aa', 
     '--border-color': '#3f3f46', 
-    '--accent': '#eab308', // Yellow-500
+    '--accent': '#eab308', // Amarelo Ouro para destaque profissional
     '--waveform-bg': '#27272a', 
     '--waveform-wave': '#e4e4e7' 
   } as React.CSSProperties,
