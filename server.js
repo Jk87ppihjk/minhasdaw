@@ -3,13 +3,13 @@ import mysql from 'mysql2/promise';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import SibApiV3Sdk from 'sib-api-v3-sdk';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { v2 as cloudinary } from 'cloudinary';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import multer from 'multer';
+import axios from 'axios'; // Ensure Axios is imported for Suno Proxy
 
 // Carrega variáveis de ambiente
 dotenv.config();
@@ -20,7 +20,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // --- DEBUG: VERIFICAÇÃO DE VARIÁVEIS DE AMBIENTE ---
 console.log("========================================");
-console.log("🚀 INICIANDO SERVIDOR MONOCHROME STUDIO (FREE CLOUD ZIP)");
+console.log("🚀 INICIANDO SERVIDOR MONOCHROME STUDIO (FREE CLOUD ZIP + SUNO)");
 console.log("========================================");
 
 // --- MIDDLEWARE ---
@@ -76,7 +76,17 @@ if (process.env.CLOUDINARY_CLOUD_NAME) {
     console.warn('⚠️ Cloudinary credentials missing. Uploads will fail.');
 }
 
-// 3. Multer (Upload) Configuration - Modified for ZIP support
+// 3. Suno Configuration
+const SUNO_API_KEY = process.env.SUNO_API;
+const SUNO_BASE_URL = "https://api.sunoapi.org/api/v1";
+
+if (SUNO_API_KEY) {
+    console.log('✅ Suno API Key Detected');
+} else {
+    console.warn('⚠️ Suno API Key Missing. Beat Generator will fail.');
+}
+
+// 4. Multer (Upload) Configuration - Modified for ZIP support
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: async (req, file) => {
@@ -127,13 +137,29 @@ const initDB = async () => {
             )
         `);
         
+        // 3. Tabela de Songs (Para Suno History)
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS songs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                suno_id VARCHAR(255),
+                title VARCHAR(255),
+                prompt TEXT,
+                tags VARCHAR(255),
+                audio_url TEXT,
+                image_url TEXT,
+                status VARCHAR(50) DEFAULT 'queued',
+                duration DECIMAL(10, 2),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        `);
+        
         // Add column safely if it doesn't exist (Migration)
         try {
             await connection.query("ALTER TABLE projects ADD COLUMN zip_url VARCHAR(512)");
             console.log("   - Added 'zip_url' column to projects table.");
-        } catch(e) {
-            // Ignore error if column exists
-        }
+        } catch(e) { /* Ignore */ }
 
         // Force update old users to subscribed
         await connection.query("UPDATE users SET is_subscribed = TRUE WHERE is_subscribed = FALSE");
@@ -274,6 +300,83 @@ app.get('/api/projects/:id', authenticateToken, async (req, res) => {
         res.status(500).json({ message: 'Error fetching project' });
     }
 });
+
+// 3. SUNO MUSIC GENERATION (Proxy)
+
+app.post('/api/music/generate', authenticateToken, async (req, res) => {
+    const { prompt, tags, title, instrumental } = req.body;
+    
+    try {
+        const payload = {
+            customMode: true,
+            prompt: prompt,
+            style: tags || "instrumental",
+            title: title || "AI Beat",
+            instrumental: instrumental,
+            model: "V3_5",
+            callBackUrl: `https://monochrome-studio.onrender.com/api/webhook/suno` // Adjust for production
+        };
+
+        const response = await axios.post(`${SUNO_BASE_URL}/generate`, payload, {
+            headers: { 
+                'Authorization': `Bearer ${SUNO_API_KEY}`,
+                'Content-Type': 'application/json' 
+            }
+        });
+
+        // Salvar no DB para tracking
+        const songs = response.data.clips || response.data; // Suno API structure varies
+        // Simple insert for history (optional for this context but good for polling)
+        if (Array.isArray(songs)) {
+            for (const song of songs) {
+                if (song.id) {
+                    await pool.query(
+                        `INSERT INTO songs (user_id, suno_id, title, status) VALUES (?, ?, ?, ?)`,
+                        [req.user.id, song.id, title, 'submitted']
+                    );
+                }
+            }
+        } else if (songs.id) {
+             await pool.query(
+                `INSERT INTO songs (user_id, suno_id, title, status) VALUES (?, ?, ?, ?)`,
+                [req.user.id, songs.id, title, 'submitted']
+            );
+        }
+
+        res.json({ data: songs });
+
+    } catch (error) {
+        console.error("Suno Gen Error:", error.response?.data || error.message);
+        res.status(500).json({ error: "Failed to generate music via Suno." });
+    }
+});
+
+app.get('/api/music/my-songs', authenticateToken, async (req, res) => {
+    try {
+        // 1. Pega músicas do DB local que estão pendentes
+        const [localSongs] = await pool.query('SELECT suno_id FROM songs WHERE user_id = ? AND status != "complete" ORDER BY created_at DESC LIMIT 5', [req.user.id]);
+        
+        if (localSongs.length === 0) return res.json([]);
+
+        const ids = localSongs.map(s => s.suno_id).join(',');
+        
+        // 2. Consulta API da Suno
+        const response = await axios.get(`${SUNO_BASE_URL}/generate/record-info?taskId=${ids}`, {
+            headers: { 'Authorization': `Bearer ${SUNO_API_KEY}` }
+        });
+
+        const updates = response.data; // Array of objects
+        
+        // 3. Atualiza DB local e retorna
+        // (Simplificado: apenas retorna os dados frescos para o frontend polling)
+        res.json(updates);
+
+    } catch (error) {
+        console.error("Suno Check Error:", error.message);
+        res.json([]);
+    }
+});
+
 
 // --- SERVIDOR DE ARQUIVOS ESTÁTICOS ---
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER;

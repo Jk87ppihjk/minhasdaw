@@ -8,7 +8,7 @@ import { EffectRegistry } from './services/EffectRegistry';
 import { Knob } from './components/Knob';
 import { EffectSelector } from './components/EffectSelector';
 
-// Auth Components - Explicit Relative Paths to fix resolution errors
+// Auth Components
 import { AuthPage } from './components/auth/AuthPage';
 import { api } from './services/api';
 
