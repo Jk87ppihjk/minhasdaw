@@ -71,6 +71,8 @@ const BASE_DEFAULTS: EffectSettings = {
 };
 
 export default function App() {
+  console.log("[App] Initializing Monochrome Studio...");
+
   // State
   const [theme, setTheme] = useState<string>('monochrome');
   const [tracks, setTracks, undoTracks, redoTracks, canUndo, canRedo] = useUndoRedo<Track[]>([]);
@@ -103,6 +105,7 @@ export default function App() {
 
   // Master Track Effect Logic
   useEffect(() => {
+      console.log("[App] Initializing Master Track Audio Chain");
       audioEngine.initializeMasterTrack(masterTrack);
       audioEngine.rebuildTrackEffects(masterTrack);
   }, []); // Run once on mount
@@ -239,6 +242,7 @@ export default function App() {
   // --- CLOUD SAVE/LOAD (ZIP) LOGIC ---
 
   const handleCloudSave = async (projectName: string) => {
+      console.log(`[App] Saving project: ${projectName}`);
       setProjectManagerOpen(false);
       setIsProcessing(true);
       setProcessingMessage("PACKING & UPLOADING...");
@@ -305,6 +309,7 @@ export default function App() {
   };
 
   const handleCloudLoad = async (projectId: string) => {
+      console.log(`[App] Loading project ID: ${projectId}`);
       await audioEngine.resumeContext();
       handleStop();
       setIsProcessing(true);
