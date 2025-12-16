@@ -8,8 +8,6 @@ import { EffectRegistry } from './services/EffectRegistry';
 import { Knob } from './components/Knob';
 import { EffectSelector } from './components/EffectSelector';
 
-// Auth Components
-import { AuthPage } from './components/auth/AuthPage';
 import { api } from './services/api';
 
 // Effects Components
@@ -73,33 +71,6 @@ const BASE_DEFAULTS: EffectSettings = {
 };
 
 export default function App() {
-  // --- AUTH STATE ---
-  const [user, setUser] = useState<any>(null);
-  const [isAuthChecking, setIsAuthChecking] = useState(true);
-
-  // Check Auth on Mount
-  useEffect(() => {
-      const checkAuth = async () => {
-          const token = localStorage.getItem('monochrome_token');
-          if (token) {
-              try {
-                  const { data } = await api.get('/auth/me');
-                  setUser(data);
-              } catch (e) {
-                  localStorage.removeItem('monochrome_token');
-              }
-          }
-          setIsAuthChecking(false);
-      };
-      checkAuth();
-  }, []);
-
-  const handleLogout = () => {
-      localStorage.removeItem('monochrome_token');
-      setUser(null);
-      window.location.reload();
-  };
-
   // State
   const [theme, setTheme] = useState<string>('monochrome');
   const [tracks, setTracks, undoTracks, redoTracks, canUndo, canRedo] = useUndoRedo<Track[]>([]);
@@ -916,28 +887,13 @@ export default function App() {
   const selectedTrack = selectedTrackId === 'MASTER' ? masterTrack : tracks.find(t => t.id === selectedTrackId);
   const selectedClip = selectedTrack && selectedClipId ? selectedTrack.clips.find(c => c.id === selectedClipId) : null;
 
-  // --- RENDER CONDITION: AUTH & CHECKOUT ---
-  
-  if (isAuthChecking) {
-      return <div className="h-screen w-full bg-[#050505] flex items-center justify-center text-white">Loading Studio...</div>;
-  }
-
-  if (!user) {
-      return <AuthPage onLogin={(u) => setUser(u)} />;
-  }
-
   // --- RENDER CONDITION: DASHBOARD VS DAW ---
   if (!currentProjectName) {
       return (
-          <>
-            <div className="absolute top-4 right-4 z-50">
-                <button onClick={handleLogout} className="flex items-center gap-2 text-zinc-500 hover:text-white transition-colors text-xs uppercase font-bold tracking-widest"><LogOut className="w-4 h-4" /> Sair</button>
-            </div>
-            <Dashboard 
-                onOpenProject={handleCloudLoad}
-                onNewProject={handleCreateNewProject}
-            />
-          </>
+          <Dashboard 
+              onOpenProject={handleCloudLoad}
+              onNewProject={handleCreateNewProject}
+          />
       );
   }
 
