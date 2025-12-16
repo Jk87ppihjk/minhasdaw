@@ -92,8 +92,6 @@ export default function App() {
 
   // Project Management State
   const [projectManagerOpen, setProjectManagerOpen] = useState(false);
-  const [projectManagerMode, setProjectManagerMode] = useState<'save' | 'open'>('open');
-  const [rootHandle, setRootHandle] = useState<FileSystemDirectoryHandle | null>(null);
   const [currentProjectName, setCurrentProjectName] = useState<string | null>(null);
 
   // Refs for tracking state inside animation frames without stale closures
@@ -942,10 +940,7 @@ export default function App() {
       {/* Modals */}
       <ProjectManager
         isOpen={projectManagerOpen}
-        mode={projectManagerMode}
         onClose={() => setProjectManagerOpen(false)}
-        rootHandle={rootHandle}
-        onSelectRoot={() => {}}
         onConfirmAction={handleCloudSave}
       />
 

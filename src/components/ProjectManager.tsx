@@ -3,10 +3,7 @@ import { Save, X, ArrowRight } from 'lucide-react';
 
 interface ProjectManagerProps {
   isOpen: boolean;
-  mode: 'save' | 'open'; // Mantido para compatibilidade, mas só usamos save
   onClose: () => void;
-  rootHandle: any; // ignored
-  onSelectRoot: any; // ignored
   onConfirmAction: (projectName: string) => void;
 }
 
@@ -75,4 +72,4 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({
       </div>
     </div>
   );
-};  
+};

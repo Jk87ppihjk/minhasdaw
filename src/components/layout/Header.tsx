@@ -10,29 +10,24 @@ interface HeaderProps {
   toggleRecord: () => void;
   formatTime: (seconds: number) => string;
   
-  // Monitoring
   isMonitoring: boolean;
   toggleMonitoring: () => void;
   
-  // Actions
   undoTracks: () => void;
   redoTracks: () => void;
   canUndo: boolean;
   canRedo: boolean;
   
-  // New File System Actions
   saveProjectToDisk: () => void;
-  openProjectFromDisk: () => void;
+  openProjectFromDisk: () => void; // agora é usado para ir para o dashboard
   onGoHome: () => void;
   
-  // Legacy Actions (kept for export)
   exportWav: () => void;
   
   toggleTheme: () => void;
   toggleFullScreen: () => void;
   isFullScreen: boolean;
   
-  // Sidebar Toggles
   isTrackListOpen: boolean;
   setIsTrackListOpen: (v: boolean) => void;
   isSidebarOpen: boolean;
@@ -40,7 +35,6 @@ interface HeaderProps {
   isCompositionOpen?: boolean;
   setIsCompositionOpen?: (v: boolean) => void;
   
-  // Project State
   currentProjectName?: string | null;
   onSelectMaster: () => void;
   selectedTrackId: string | null;
@@ -56,18 +50,8 @@ export const Header: React.FC<HeaderProps> = ({
   currentProjectName, onSelectMaster, selectedTrackId
 }) => {
 
-  // --- DEBUG LOGGING ---
-  useEffect(() => {
-      console.log("%c[HEADER DEBUG]", "color: yellow; font-weight: bold; background: #333; padding: 4px;");
-      console.log("Current Project Name:", currentProjectName);
-      console.log("Window Width:", window.innerWidth);
-      console.log("Is Mobile Mode (<768px):", window.innerWidth < 768);
-      console.log("Save Function Available:", !!saveProjectToDisk);
-  }, [currentProjectName, saveProjectToDisk]);
-
   return (
     <header className="h-16 border-b border-[var(--border-color)] flex items-center justify-between px-4 bg-[var(--bg-panel)] shrink-0 z-40 shadow-md relative">
-        {/* Left: Mobile Menu / Branding */}
         <div className="flex items-center gap-3 w-auto md:w-1/4">
           <button 
              onClick={() => setIsTrackListOpen(!isTrackListOpen)} 
@@ -90,11 +74,9 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
         
-        {/* Central Transport Capsule */}
         <div className="flex flex-col items-center justify-center flex-1">
             <div className="flex items-center gap-4">
                 
-                {/* Master Volume & Selector */}
                 <div className="hidden lg:flex flex-col items-center group mr-2">
                     <button 
                         onClick={onSelectMaster} 
@@ -111,7 +93,6 @@ export const Header: React.FC<HeaderProps> = ({
                     />
                 </div>
 
-                {/* BPM */}
                 <div className="hidden md:flex items-center gap-2 bg-[var(--bg-element)] rounded-lg px-2 py-1 border border-[var(--border-color)]">
                     <div className="flex flex-col items-center">
                         <span className="text-[8px] font-bold text-[var(--text-muted)] tracking-wider">BPM</span>
@@ -132,7 +113,6 @@ export const Header: React.FC<HeaderProps> = ({
                     <button onClick={toggleRecord} className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all ${audioState.isRecording ? 'bg-red-600 border-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(220,38,38,0.5)]' : 'bg-[var(--bg-element)] border-[var(--border-color)] text-red-500 hover:text-red-400 hover:border-red-900'}`}>
                         <div className={`w-3 h-3 rounded-full ${audioState.isRecording ? 'bg-white' : 'bg-current'}`}></div>
                     </button>
-                    {/* Live Monitoring Button */}
                     <button 
                         onClick={toggleMonitoring} 
                         className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all ${isMonitoring ? 'bg-green-500/20 text-green-500 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)]' : 'bg-[var(--bg-element)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
@@ -149,10 +129,8 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
         </div>
 
-        {/* Right: Tools / Mixer Toggle */}
         <div className="flex items-center gap-3 justify-end w-auto md:w-1/4">
             
-            {/* Desktop Actions (md:flex) */}
             <div className="hidden md:flex items-center gap-2">
                 <button 
                     onClick={() => canUndo && undoTracks()} 
@@ -174,12 +152,8 @@ export const Header: React.FC<HeaderProps> = ({
                     {isFullScreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
                 </button>
                 
-                {/* SAVE BUTTON (CLOUD) - Desktop */}
                 <button 
-                    onClick={() => {
-                        console.log("Botão Salvar Clicado (Desktop)");
-                        saveProjectToDisk();
-                    }} 
+                    onClick={saveProjectToDisk} 
                     className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" 
                     title="Salvar na Nuvem (Ctrl+S)"
                 >
@@ -190,23 +164,10 @@ export const Header: React.FC<HeaderProps> = ({
                 <button onClick={exportWav} className="p-2 hover:bg-[var(--bg-element)] rounded text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors" title="Exportar WAV"><Download className="w-5 h-5" /></button>
             </div>
             
-            {/* MOBILE SAVE BUTTON (md:hidden) - Explicitly added for visibility */}
-            <button 
-                onClick={() => {
-                    console.log("Botão Salvar Clicado (Mobile)");
-                    saveProjectToDisk();
-                }}
-                className="md:hidden p-2 text-[var(--accent)] hover:bg-[var(--bg-element)] rounded border border-[var(--border-color)]"
-                title="Salvar na Nuvem"
-            >
-                <CloudUpload className="w-5 h-5" />
-            </button>
-
             <button className="md:hidden p-2 text-[var(--text-muted)]"><MoreVertical className="w-5 h-5" /></button>
 
             <div className="h-6 w-[1px] bg-[var(--border-color)] mx-1 hidden md:block"></div>
             
-            {/* Composition Button */}
             {setIsCompositionOpen && (
                 <button 
                     onClick={() => setIsCompositionOpen(!isCompositionOpen)} 
@@ -217,7 +178,6 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
             )}
 
-            {/* Mixer Button */}
             <button 
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
                 className={`p-2 border border-[var(--border-color)] rounded ${isSidebarOpen ? 'bg-[var(--bg-element)] text-[var(--text-main)]' : 'text-[var(--text-muted)]'}`}

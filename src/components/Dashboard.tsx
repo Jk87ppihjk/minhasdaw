@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Cloud, Plus, FolderOpen, Music, Clock, ArrowRight, Loader2, Disc, LayoutGrid } from 'lucide-react';
+import { Cloud, Plus, FolderOpen, Music, Clock, ArrowRight, Loader2, Disc } from 'lucide-react';
 import { api } from '../services/api';
 
 interface Project {
@@ -9,9 +9,7 @@ interface Project {
 }
 
 interface DashboardProps {
-  rootHandle?: any; // Deprecated but kept for type compat if needed
-  onSelectRoot?: any; // Deprecated
-  onOpenProject: (projectId: string) => void; // Now receives ID, not name
+  onOpenProject: (projectId: string) => void;
   onNewProject: () => void;
 }
 

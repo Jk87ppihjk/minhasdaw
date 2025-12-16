@@ -13,13 +13,11 @@ interface TrackListProps {
   deleteTrack: (id: string) => void;
   editTrackName: (id: string) => void;
   
-  // Responsive State
   isOpen: boolean;
   isMobile: boolean;
   closeOnMobile: () => void;
   scrollTop: number;
   
-  // New: Open Beat Generator
   onOpenBeatGen?: () => void;
 }
 
@@ -37,7 +35,6 @@ export const TrackList: React.FC<TrackListProps> = ({
         `}
         style={{ top: isMobile ? '4rem' : '0', height: isMobile ? 'calc(100% - 4rem)' : '100%' }}
     >
-         {/* Track List Header */}
          <div className="h-10 border-b border-[var(--border-color)] bg-[var(--bg-panel)] flex flex-shrink-0 items-center justify-between px-3">
              <span className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Tracks</span>
              <div className="flex gap-2">
@@ -53,10 +50,8 @@ export const TrackList: React.FC<TrackListProps> = ({
              </div>
          </div>
 
-         {/* Track Items */}
          <div className="flex-1 overflow-y-auto custom-scrollbar" style={{ transform: `translateY(-${scrollTop}px)` }}>
             
-            {/* SPACER FOR RULER ALIGNMENT */}
             <div className="h-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)] shrink-0 flex items-center justify-center">
                 <div className="text-[8px] text-[var(--text-muted)] opacity-50 font-mono tracking-widest">TIMELINE SYNC</div>
             </div>
