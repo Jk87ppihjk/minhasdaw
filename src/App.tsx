@@ -32,6 +32,7 @@ import { CompositionAssistant } from './components/CompositionAssistant';
 import { ProjectManager } from './components/ProjectManager';
 import { Dashboard } from './components/Dashboard';
 import { AiAssistantModal } from './components/AiAssistantModal';
+import { BeatGeneratorModal } from './components/BeatGeneratorModal';
 
 // --- Constants ---
 const BASE_PX_PER_SEC = 50;
@@ -163,6 +164,8 @@ export default function App() {
   
   // AI Mixing State
   const [showAiModal, setShowAiModal] = useState(false);
+  // AI Beat State
+  const [showBeatModal, setShowBeatModal] = useState(false);
 
   const [audioState, setAudioState] = useState<AudioEngineState>({
     isPlaying: false, currentTime: 0, totalDuration: 120, isRecording: false, bpm: 120, snapToGrid: true, metronomeOn: false, masterVolume: 0.8,
@@ -482,6 +485,35 @@ export default function App() {
       setTracks(prev => prev.map(t => t.id === selectedTrackId ? { ...t, clips: t.clips.filter(c => c.id !== selectedClipId) } : t));
       setSelectedClipId(null);
   }, [selectedClipId, selectedTrackId, audioState.isPlaying, setTracks]);
+
+  // --- IMPORT AI BEAT (New) ---
+  const handleImportAiBeat = (audioBuffer: AudioBuffer, name: string) => {
+      const newClip: Clip = { 
+          id: crypto.randomUUID(), 
+          name: name, 
+          buffer: audioBuffer,
+          duration: audioBuffer.duration, 
+          audioOffset: 0, 
+          startTime: 0 
+      };
+      
+      const newTrack: Track = { 
+          id: crypto.randomUUID(), 
+          name: "AI Beat", 
+          type: TrackType.BEAT, 
+          volume: 0.8, 
+          pan: 0, 
+          muted: false, 
+          solo: false, 
+          bypassFX: false, 
+          clips: [newClip], 
+          effects: { ...JSON.parse(JSON.stringify(BASE_DEFAULTS)), ...EffectRegistry.getDefaultSettings() }, 
+          activeEffects: [] 
+      };
+
+      setTracks(prev => [...prev, newTrack]);
+      setAudioState(prev => ({ ...prev, totalDuration: Math.max(prev.totalDuration, audioBuffer.duration + 10) }));
+  };
 
   // --- RECORDING LOGIC ---
   const toggleRecord = async () => {
@@ -969,6 +1001,13 @@ export default function App() {
         />
       )}
 
+      {showBeatModal && (
+        <BeatGeneratorModal
+            onImport={handleImportAiBeat}
+            onClose={() => setShowBeatModal(false)}
+        />
+      )}
+
       {showEffectSelector && (
           <EffectSelector 
               onSelect={(effectId) => {
@@ -1025,6 +1064,7 @@ export default function App() {
             isMobile={isMobile}
             closeOnMobile={() => setIsTrackListOpen(false)}
             scrollTop={scrollTop}
+            onOpenBeatGen={() => setShowBeatModal(true)}
         />
 
         <Timeline 
